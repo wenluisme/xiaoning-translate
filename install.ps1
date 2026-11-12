@@ -66,8 +66,9 @@ $cfg = Join-Path $Dest 'config.ini'
 if (-not (Test-Path $cfg)) {
   Say "设置 Claude API Key"
   Write-Host "小宁翻译需要一个 Anthropic（Claude）API Key，形如 sk-ant-...。没有的话直接回车跳过，以后右键托盘图标 → 打开配置文件再填。"
-  if ($env:XN_API_KEY) { $key = $env:XN_API_KEY } else { $key = Read-Host "API Key" }
-  if ($env:XN_ENDPOINT) { $ep = $env:XN_ENDPOINT } else { $ep = Read-Host "接口地址（直接回车用官方地址）" }
+  $quiet = $env:XN_UPDATE -eq '1'   # auto-update runs in a hidden window: never prompt
+  if ($env:XN_API_KEY) { $key = $env:XN_API_KEY } elseif ($quiet) { $key = '' } else { $key = Read-Host "API Key" }
+  if ($env:XN_ENDPOINT) { $ep = $env:XN_ENDPOINT } elseif ($quiet) { $ep = '' } else { $ep = Read-Host "接口地址（直接回车用官方地址）" }
   if (-not $ep) { $ep = 'https://api.anthropic.com/v1/messages' }
   $ini = "[api]`r`nendpoint=$ep`r`napiKey=$key`r`nmodel=claude-sonnet-5-5`r`n`r`n[state]`r`nlastLanguage=Spanish`r`ntoolbar=1`r`n"
   [IO.File]::WriteAllText($cfg, $ini, (New-Object Text.UnicodeEncoding $false, $true))  # UTF-16 LE with BOM, required by AutoHotkey IniRead

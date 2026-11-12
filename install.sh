@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO="wenluisme/xiaoning-translate"
-DEST="$HOME/xiaoning-translate"
+DEST="${XN_DEST:-$HOME/xiaoning-translate}"
 
 say() { printf "\n\033[1;38;5;173m▸ %s\033[0m\n" "$1"; }
 
@@ -50,7 +50,8 @@ if [ ! -f "$CFG" ]; then
   echo "没有的话可以先直接回车跳过，以后再编辑 $CFG 填写。"
   ask() { # ask "prompt" → reads from the terminal even when run via curl | bash
     local reply=""
-    if [ -t 0 ]; then read -r -p "$1" reply || true
+    if [ "${XN_UPDATE:-}" = "1" ]; then :   # auto-update: never prompt
+    elif [ -t 0 ]; then read -r -p "$1" reply || true
     elif { exec 3</dev/tty; } 2>/dev/null; then read -r -p "$1" reply <&3 || true; exec 3<&-
     else read -r reply || true; fi
     printf '%s' "$reply"

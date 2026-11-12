@@ -6,7 +6,7 @@ Select any text with the mouse and a small toolbar pops up next to it:
 
 **Translate · To English · To ⟨last language⟩ · Other languages · Polish · Copy**
 
-- **Read customer messages**: select a message in a foreign language and click **Translate** — a popup shows the translation (Chinese text is translated into English).
+- **Read customer messages**: select a message and click **Translate** — a popup shows the Chinese translation, what the customer means, and a suggested reply (the copy button copies the suggested reply).
 - **Write replies**: draft your reply in your own language, select it, click **To English** or **Other languages** — it is translated and polished into a natural, friendly support tone and **written straight back into the input box**. Undo with ⌘Z / Ctrl+Z.
 - Works almost everywhere: Intercom, email, Telegram, WhatsApp, DingTalk, Slack, web pages…
 - **Pin the popup**: click the pin icon on the translation card to keep it open; the next translation shows up in the same card. Click × to close it.
@@ -31,7 +31,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
 
 - Change the key / gateway: right-click the tray icon → **打开配置文件** (open config file), save, then right-click → **重新加载** (reload).
 - Custom prompts: right-click the tray icon → **打开提示词文件夹** (open prompts folder), put `write.txt` / `read.txt` there, then reload.
-- Update: run the same command again — your key and prompts are kept.
+- Updates: installed automatically — once a day it checks GitHub and quietly installs a new version (your key and prompts are kept). To check now: right-click the tray icon → **检查更新** (check for updates).
 - Turn the toolbar on/off: `Ctrl+Alt+T`.
 
 ## Install on macOS (about 2 minutes)
@@ -49,7 +49,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
 4. Click the hammer icon in the menu bar → **Reload Config**.
 
 - Change the key: edit `apiKey` in `~/xiaoning-translate/config.lua`, then hammer icon → Reload Config.
-- Update: run the same command again — your key and prompts are kept.
+- Updates: installed automatically — once a day it checks GitHub and quietly installs a new version (your key and prompts are kept). You can also run the install command again.
 - Turn the toolbar on/off: `⌃⌥T`.
 
 ## Toolbar buttons
