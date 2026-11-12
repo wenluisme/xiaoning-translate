@@ -1,14 +1,14 @@
 -- Claude 翻译助手（Hammerspoon）
 --
--- 写回复（直接替换输入框里的文字，⌘Z 可撤销）：
---   ⌃⇧   同时按下 Control+Shift 再松开 = 翻译润色成英文
---   ⌃⌥L  弹出语言列表，选一种语言翻译润色（会记住）
---   ⌃⌥K  用上次在列表里选的语言再来一次
---   ⌃⌥P  只润色，不换语言
--- 看消息（弹窗显示，不改原文）：
---   ⌃⌥R  选中文字 → 翻译成中文（中文则翻成英文）
---   ⌃⌥S  框选截图 → 识别并翻译成中文，报错会附一句说明
--- 弹窗：Esc 或点 × 关闭，「复制」按钮复制译文。
+-- 用鼠标选中文字 → 旁边弹出工具条：
+--   翻译        弹窗显示中文（选的是中文则翻成英文）
+--   译成英文     翻译并润色成英文，直接替换选中的文字（⌘Z 撤销）
+--   译成〔上次〕  用上次在「其他语言」里选的语言
+--   其他语言     弹出语言列表
+--   润色        只润色，不换语言
+--   复制
+-- 选中的是不能编辑的文字（比如客户发来的消息）时，只显示「翻译」「复制」。
+-- 快捷键：⌃⌥S 截图翻译；⌃⌥T 开关划词工具条。
 
 local M = {}
 
@@ -308,10 +308,16 @@ end
 
 -- ---------------------------------------------------------------- write: translate & replace
 
-local function run(targetLanguage)
+-- preset = { text = ..., editable = true|false|nil } when called from the selection toolbar.
+local function run(targetLanguage, preset)
   if busy then showAlert("上一条还在处理中…") return end
   local app = hs.application.frontmostApplication()
-  local text, saved, selectedAll = grabText(true)
+  local text, saved, selectedAll
+  if preset then
+    text, saved, selectedAll = preset.text, hs.pasteboard.readAllData(), false
+  else
+    text, saved, selectedAll = grabText(true)
+  end
   log("run target=" .. tostring(targetLanguage) .. " app=" .. tostring(app and app:bundleID()) .. " copy=" .. tostring(copyMethod) .. " text=" .. short(text))
   if not text or text:match("^%s*$") then
     restoreClipboard(saved)
@@ -345,6 +351,11 @@ local function run(targetLanguage)
       showAlert(err, 5)
       return
     end
+    -- selection that can't be edited (e.g. a customer's message): just show the result
+    if preset and preset.editable == false then
+      showPopup("结果", result, true)
+      return
+    end
     local front = hs.application.frontmostApplication()
     hs.pasteboard.setContents(result)
     if not app or not front or front:bundleID() ~= app:bundleID() then
@@ -357,8 +368,13 @@ local function run(targetLanguage)
     end
     hs.eventtap.keyStroke({ "cmd" }, "v", 0)
     log("run pasted result=" .. short(result))
-    later(0.6, function() restoreClipboard(saved) end)
-    showAlert("✅ 已替换（⌘Z 撤销）", 1.5)
+    if preset and preset.editable == nil then
+      -- can't tell whether this app accepted the paste: leave the result on the clipboard as a backup
+      showAlert("✅ 已替换（⌘Z 撤销）· 结果也在剪贴板里", 2)
+    else
+      later(0.6, function() restoreClipboard(saved) end)
+      showAlert("✅ 已替换（⌘Z 撤销）", 1.5)
+    end
   end)
 end
 
@@ -387,47 +403,58 @@ local function readSelection()
   readText(text)
 end
 
--- ---------------------------------------------------------------- auto icon after selecting text
+-- ---------------------------------------------------------------- selection toolbar
 
-local autoIconEnabled = hs.settings.get("claudeReplace.autoIcon")
-if autoIconEnabled == nil then autoIconEnabled = true end
+local toolbarEnabled = hs.settings.get("claudeReplace.autoIcon")
+if toolbarEnabled == nil then toolbarEnabled = true end
 
-local icon = nil
-local iconText = nil
-local iconTimer = nil
+local lastLanguage = hs.settings.get("claudeReplace.lastLanguage") or "Spanish"
+
+local toolbar = nil
+local toolbarSel = nil
+local toolbarTimer = nil
+local toolbarButtons = {}
 local mouseDownPos = nil
 local mouseTap = nil
 
-local function hideIcon()
-  cancel(iconTimer) iconTimer = nil
-  if icon then icon:delete() icon = nil end
-  iconText = nil
+local function hideToolbar()
+  cancel(toolbarTimer) toolbarTimer = nil
+  if toolbar then toolbar:delete() toolbar = nil end
+  toolbarSel = nil
 end
 
 local function pointIn(p, f)
   return f and p.x >= f.x and p.x <= f.x + f.w and p.y >= f.y and p.y <= f.y + f.h
 end
 
--- Read the selected text via Accessibility; fall back to a silent ⌘C that restores the clipboard.
+local EDITABLE_ROLES = { AXTextField = true, AXTextArea = true, AXComboBox = true, AXSearchField = true }
+
+-- Returns selected text and whether it sits in an editable field (true / false / nil = unknown).
+-- Reads via Accessibility when possible; otherwise a silent copy that restores the clipboard.
 local function selectedText()
   local ok, el = pcall(function()
     return hs.axuielement.systemWideElement():attributeValue("AXFocusedUIElement")
   end)
-  local role = ok and el and el:attributeValue("AXRole") or "none"
+  local editable = nil
   if ok and el then
+    local role = el:attributeValue("AXRole")
+    local settable = false
+    pcall(function() settable = el:isAttributeSettable("AXValue") end)
+    if EDITABLE_ROLES[role] or settable then editable = true
+    elseif role == "AXWebArea" or role == "AXStaticText" or role == "AXGroup" or role == "AXScrollArea" then editable = false end
     local ok2, sel = pcall(function() return el:attributeValue("AXSelectedText") end)
-    log("  ax focused role=" .. tostring(role) .. " selectedText=" .. short(ok2 and sel or "ERR"))
-    if ok2 and type(sel) == "string" and not sel:match("^%s*$") then return sel end
+    log("  ax role=" .. tostring(role) .. " editable=" .. tostring(editable) .. " selectedText=" .. short(ok2 and sel or "ERR"))
+    if ok2 and type(sel) == "string" and not sel:match("^%s*$") then return sel, editable end
   else
     log("  ax focused element: none")
   end
   local text, saved = grabText(false)
   restoreClipboard(saved)
   log("  copy via " .. tostring(copyMethod) .. " text=" .. short(text))
-  return text
+  return text, editable
 end
 
-local function worthTranslating(text)
+local function worthShowing(text)
   if not text then return false end
   local t = text:gsub("^%s+", ""):gsub("%s+$", "")
   if utf8.len(t) == nil or utf8.len(t) < 2 or #t > 20000 then return false end
@@ -435,40 +462,107 @@ local function worthTranslating(text)
   if not t:find("%a") and not t:find("[\128-\255]") then return false end
   -- skip URLs and emails
   if t:match("^%S+://%S+$") or t:match("^[%w%._%-]+@[%w%.%-]+$") then return false end
-  -- mostly Chinese → skip (you can still press ⌃⌥R)
-  local cjk, total = 0, 0
-  for _, cp in utf8.codes(t) do
-    if cp > 32 then
-      total = total + 1
-      if cp >= 0x4E00 and cp <= 0x9FFF then cjk = cjk + 1 end
-    end
-  end
-  return total > 0 and cjk / total < 0.3
+  return true
 end
 
-local function showIcon(text, pos)
-  hideIcon()
-  iconText = text
-  local size = 26
-  icon = hs.canvas.new({ x = pos.x + 10, y = pos.y + 10, w = size, h = size })
-  icon:level(hs.canvas.windowLevels.popUpMenu)
-  icon:appendElements(
-    { type = "rectangle", action = "fill", roundedRectRadii = { xRadius = 7, yRadius = 7 },
-      fillColor = { red = 0.85, green = 0.47, blue = 0.34, alpha = 0.95 },
-      trackMouseEnterExit = true, trackMouseDown = true, id = "bg" },
-    { type = "text", text = "译", textColor = { white = 1 }, textSize = 15,
-      textAlignment = "center", frame = { x = 0, y = 3, w = size, h = size } }
-  )
-  icon:mouseCallback(function(_, message)
-    if message == "mouseEnter" or message == "mouseDown" then
-      local t = iconText
-      hideIcon()
-      if t then readText(t) end
+local chooseLanguage -- defined below
+
+local function toolbarAction(id, sel)
+  if id == "read" then readText(sel.text)
+  elseif id == "en" then run("English", sel)
+  elseif id == "last" then run(lastLanguage, sel)
+  elseif id == "more" then chooseLanguage(sel)
+  elseif id == "polish" then run(nil, sel)
+  elseif id == "copy" then
+    hs.pasteboard.setContents(sel.text)
+    showAlert("已复制", 1)
+  end
+end
+
+local function showToolbar(sel, pos)
+  hideToolbar()
+  toolbarSel = sel
+  toolbarButtons = {}
+
+  local buttons = { { id = "read", label = "翻译" } }
+  if sel.editable ~= false then
+    table.insert(buttons, { id = "en", label = "译成英文" })
+    if lastLanguage ~= "English" then
+      table.insert(buttons, { id = "last", label = "译成" .. (LANG_ZH[lastLanguage] or lastLanguage) })
+    end
+    table.insert(buttons, { id = "more", label = "其他语言" })
+    table.insert(buttons, { id = "polish", label = "润色" })
+  end
+  table.insert(buttons, { id = "copy", label = "复制" })
+
+  local dark = hs.host.interfaceStyle() == "Dark"
+  local bg = dark and { red = 0.17, green = 0.17, blue = 0.18, alpha = 0.97 } or { red = 0.97, green = 0.97, blue = 0.97, alpha = 0.97 }
+  local fg = dark and { white = 0.95 } or { white = 0.12 }
+  local hover = dark and { white = 1, alpha = 0.12 } or { white = 0, alpha = 0.07 }
+  local sep = dark and { white = 1, alpha = 0.15 } or { white = 0, alpha = 0.12 }
+  local accent = { red = 0.85, green = 0.47, blue = 0.34, alpha = 1 }
+
+  local fontSize, padX, h, gap = 13, 11, 32, 2
+  local widths, total = {}, 6
+  for i, b in ipairs(buttons) do
+    local size = hs.drawing.getTextDrawingSize(b.label, { size = fontSize })
+    widths[i] = math.ceil(size.w) + padX * 2
+    total = total + widths[i] + gap
+  end
+  total = total + 4
+
+  local screen = hs.mouse.getCurrentScreen():frame()
+  local x = math.min(math.max(pos.x - total / 2, screen.x + 6), screen.x + screen.w - total - 6)
+  local y = pos.y - h - 14
+  if y < screen.y + 4 then y = pos.y + 18 end
+
+  toolbar = hs.canvas.new({ x = x, y = y, w = total, h = h })
+  toolbar:level(hs.canvas.windowLevels.popUpMenu)
+  toolbar:clickActivating(false)
+  toolbar:appendElements({
+    type = "rectangle", action = "fill", fillColor = bg, id = "bg",
+    roundedRectRadii = { xRadius = 9, yRadius = 9 },
+    withShadow = true, shadow = { blurRadius = 8, color = { alpha = 0.25 }, offset = { h = -2, w = 0 } },
+  })
+  local cx = 5
+  local hitIndex = {}
+  for i, b in ipairs(buttons) do
+    if i > 1 then
+      toolbar:appendElements({ type = "rectangle", action = "fill", fillColor = sep,
+        frame = { x = cx - 1, y = 9, w = 1, h = h - 18 } })
+    end
+    toolbar:appendElements({
+      type = "rectangle", action = "fill", fillColor = { alpha = 0 }, id = b.id,
+      roundedRectRadii = { xRadius = 6, yRadius = 6 },
+      frame = { x = cx + 1, y = 3, w = widths[i] - 2, h = h - 6 },
+      trackMouseDown = true, trackMouseEnterExit = true,
+    })
+    hitIndex[b.id] = #toolbar
+    toolbarButtons[#toolbarButtons + 1] = { id = b.id, label = b.label, x = x + cx + widths[i] / 2, y = y + h / 2 }
+    toolbar:appendElements({
+      type = "text", text = b.label, textSize = fontSize, textAlignment = "center",
+      textColor = (b.id == "read") and accent or fg,
+      frame = { x = cx, y = (h - fontSize - 4) / 2, w = widths[i], h = fontSize + 6 },
+    })
+    cx = cx + widths[i] + gap
+  end
+
+  toolbar:mouseCallback(function(c, message, id)
+    local idx = hitIndex[id]
+    if not idx then return end
+    if message == "mouseEnter" then c[idx].fillColor = hover
+    elseif message == "mouseExit" then c[idx].fillColor = { alpha = 0 }
+    elseif message == "mouseDown" then
+      local s = toolbarSel
+      hideToolbar()
+      if s then later(0.05, function() toolbarAction(id, s) end) end
     end
   end)
-  icon:show()
-  iconTimer = later(4, hideIcon)
+  toolbar:show()
+  toolbarTimer = later(8, hideToolbar)
 end
+
+local EXCLUDED_APPS = { ["org.hammerspoon.Hammerspoon"] = true, ["com.apple.finder"] = true }
 
 local function onMouseUp(e)
   local up = hs.mouse.absolutePosition()
@@ -476,65 +570,35 @@ local function onMouseUp(e)
   local clicks = e:getProperty(hs.eventtap.event.properties.mouseEventClickState) or 1
   local dragged = down and (math.abs(up.x - down.x) + math.abs(up.y - down.y) > 8)
   if not dragged and clicks < 2 then return end
+  if toolbar and pointIn(up, toolbar:frame()) then return end
   local front = hs.application.frontmostApplication()
   local bid = front and front:bundleID() or "?"
   log(string.format("mouseUp app=%s dragged=%s clicks=%d", bid, tostring(dragged), clicks))
-  if bid == "org.hammerspoon.Hammerspoon" then return end
+  if EXCLUDED_APPS[bid] then return end
   later(0.15, function()
-    local text = selectedText()
-    local worth = worthTranslating(text)
+    local text, editable = selectedText()
+    local worth = worthShowing(text)
     log("  worth=" .. tostring(worth))
-    if worth then showIcon(text, up) end
+    if worth then showToolbar({ text = text, editable = editable }, up) end
   end)
-end
-
--- Control+Shift pressed together and released on their own (no other key) → English replace.
-local chordArmed, chordStart = false, 0
-local function onFlagsChanged(e)
-  local f = e:getFlags()
-  local onlyCtrlShift = f.ctrl and f.shift and not f.cmd and not f.alt and not f.fn
-  local none = not (f.ctrl or f.shift or f.cmd or f.alt or f.fn)
-  if onlyCtrlShift then
-    if not chordArmed then chordArmed, chordStart = true, hs.timer.secondsSinceEpoch() end
-  elseif none then
-    if chordArmed and hs.timer.secondsSinceEpoch() - chordStart < 1.0 then
-      log("chord ctrl+shift fired")
-      later(0.05, function() run("English") end)
-    end
-    chordArmed = false
-  elseif not (f.ctrl or f.shift) or f.cmd or f.alt or f.fn then
-    chordArmed = false
-  end
 end
 
 local function startAutoIcon()
   if mouseTap then mouseTap:stop() end
   mouseTap = hs.eventtap.new(
     { hs.eventtap.event.types.leftMouseDown, hs.eventtap.event.types.leftMouseUp,
-      hs.eventtap.event.types.keyDown, hs.eventtap.event.types.mouseMoved,
-      hs.eventtap.event.types.flagsChanged },
+      hs.eventtap.event.types.keyDown, hs.eventtap.event.types.scrollWheel },
     function(e)
       local t = e:getType()
-      if t == hs.eventtap.event.types.flagsChanged then
-        onFlagsChanged(e)
-        return false
-      end
-      if t ~= hs.eventtap.event.types.mouseMoved then chordArmed = false end
       if t == hs.eventtap.event.types.leftMouseDown then
         local p = hs.mouse.absolutePosition()
         mouseDownPos = p
-        if icon and not pointIn(p, icon:frame()) then hideIcon() end
+        if toolbar and not pointIn(p, toolbar:frame()) then hideToolbar() end
         if popup and not pointIn(p, popup:frame()) then closePopup() end
       elseif t == hs.eventtap.event.types.leftMouseUp then
-        if autoIconEnabled then onMouseUp(e) end
-      elseif t == hs.eventtap.event.types.keyDown then
-        if icon then hideIcon() end
-      elseif t == hs.eventtap.event.types.mouseMoved then
-        if icon and iconText and pointIn(hs.mouse.absolutePosition(), icon:frame()) then
-          local text = iconText
-          hideIcon()
-          later(0, function() readText(text) end)
-        end
+        if toolbarEnabled then onMouseUp(e) end
+      elseif t == hs.eventtap.event.types.keyDown or t == hs.eventtap.event.types.scrollWheel then
+        if toolbar then hideToolbar() end
       end
       return false
     end)
@@ -542,10 +606,10 @@ local function startAutoIcon()
 end
 
 local function toggleAutoIcon()
-  autoIconEnabled = not autoIconEnabled
-  hs.settings.set("claudeReplace.autoIcon", autoIconEnabled)
-  if not autoIconEnabled then hideIcon() end
-  showAlert(autoIconEnabled and "划词图标：已开启" or "划词图标：已关闭（⌃⌥R 仍可用）", 1.5)
+  toolbarEnabled = not toolbarEnabled
+  hs.settings.set("claudeReplace.autoIcon", toolbarEnabled)
+  if not toolbarEnabled then hideToolbar() end
+  showAlert(toolbarEnabled and "划词工具条：已开启" or "划词工具条：已关闭", 1.5)
 end
 
 local function readScreenshot()
@@ -569,17 +633,15 @@ local function readScreenshot()
   end, { "-i", "-x", path }):start()
 end
 
--- ---------------------------------------------------------------- hotkeys
-
-local lastLanguage = hs.settings.get("claudeReplace.lastLanguage") or "Spanish"
+-- ---------------------------------------------------------------- language picker & start
 
 local activeChooser = nil
-local function chooseLanguage()
+chooseLanguage = function(sel)
   local chooser = hs.chooser.new(function(choice)
     if not choice then return end
     lastLanguage = choice.lang
     hs.settings.set("claudeReplace.lastLanguage", lastLanguage)
-    later(0.15, function() run(lastLanguage) end)
+    later(0.2, function() run(lastLanguage, sel) end)
   end)
   local choices = {}
   for _, lang in ipairs(LANGUAGES) do
@@ -595,10 +657,6 @@ function M.start()
   -- load extensions up front so nothing gets lazily loaded inside event callbacks
   local _ = { hs.canvas, hs.axuielement, hs.mouse, hs.eventtap, hs.window, hs.webview, hs.webview.usercontent, hs.drawing, hs.styledtext, hs.settings, hs.alert, hs.timer, hs.hotkey,
     hs.pasteboard, hs.http, hs.json, hs.chooser, hs.task, hs.base64, hs.host, hs.screen, hs.application }
-  hs.hotkey.bind({ "ctrl", "alt" }, "L", chooseLanguage)
-  hs.hotkey.bind({ "ctrl", "alt" }, "K", function() run(lastLanguage) end)
-  hs.hotkey.bind({ "ctrl", "alt" }, "P", function() run(nil) end)
-  hs.hotkey.bind({ "ctrl", "alt" }, "R", readSelection)
   hs.hotkey.bind({ "ctrl", "alt" }, "S", readScreenshot)
   hs.hotkey.bind({ "ctrl", "alt" }, "T", toggleAutoIcon)
   startAutoIcon()
@@ -617,8 +675,10 @@ M.callClaude = callClaude
 
 M.paths = function() return { dir = DIR, write = PROMPT_FILE, read = READ_PROMPT_FILE, endpoint = ENDPOINT, model = MODEL, hasKey = authToken() ~= nil } end
 
+M.toolbarButtons = function() return toolbar and toolbarButtons or {} end
+
 M.debugState = function()
-  return { icon = icon ~= nil, iconFrame = icon and icon:frame(), iconText = iconText, popup = popup ~= nil, popupFrame = popup and popup:frame(), popupVisible = popup and popup:isVisible(), tap = mouseTap and mouseTap:isEnabled(), auto = autoIconEnabled }
+  return { icon = toolbar ~= nil, iconFrame = toolbar and toolbar:frame(), iconText = toolbarSel and toolbarSel.text, editable = toolbarSel and toolbarSel.editable, popup = popup ~= nil, popupFrame = popup and popup:frame(), popupVisible = popup and popup:isVisible(), tap = mouseTap and mouseTap:isEnabled(), auto = toolbarEnabled }
 end
 
 return M
