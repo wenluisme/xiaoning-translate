@@ -12,8 +12,14 @@ jobs:
 
       - name: Get AutoHotkey v2
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Invoke-WebRequest https://www.autohotkey.com/download/ahk-v2.zip -OutFile ahk.zip
+          $rels = Invoke-RestMethod 'https://api.github.com/repos/AutoHotkey/AutoHotkey/releases?per_page=20' -Headers @{ Authorization = "Bearer $env:GH_TOKEN" }
+          $rel = $rels | Where-Object { $_.tag_name -like 'v2.*' -and -not $_.prerelease } | Select-Object -First 1
+          $url = ($rel.assets | Where-Object { $_.name -like 'AutoHotkey_*.zip' } | Select-Object -First 1).browser_download_url
+          Write-Host "AutoHotkey $($rel.tag_name): $url"
+          Invoke-WebRequest $url -OutFile ahk.zip
           Expand-Archive ahk.zip -DestinationPath ahk
           Get-ChildItem ahk | Select-Object Name
 

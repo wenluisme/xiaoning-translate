@@ -44,8 +44,17 @@ $ahkDir = Join-Path $Dest 'AutoHotkey'
 $ahkExe = Join-Path $ahkDir 'AutoHotkey64.exe'
 if (-not (Test-Path $ahkExe)) {
   Say "下载 AutoHotkey v2（免费开源的 Windows 自动化工具，用来运行小宁翻译）"
-  Invoke-WebRequest 'https://www.autohotkey.com/download/ahk-v2.zip' -OutFile "$tmp\ahk.zip" -UseBasicParsing
+  $ahkUrl = $null
+  try {
+    # official GitHub releases (autohotkey.com sits behind a Cloudflare check that some networks hit)
+    $rels = Invoke-RestMethod 'https://api.github.com/repos/AutoHotkey/AutoHotkey/releases?per_page=20' -UseBasicParsing
+    $rel = $rels | Where-Object { $_.tag_name -like 'v2.*' -and -not $_.prerelease } | Select-Object -First 1
+    $ahkUrl = ($rel.assets | Where-Object { $_.name -like 'AutoHotkey_*.zip' } | Select-Object -First 1).browser_download_url
+  } catch {}
+  if (-not $ahkUrl) { $ahkUrl = 'https://www.autohotkey.com/download/ahk-v2.zip' }
+  Invoke-WebRequest $ahkUrl -OutFile "$tmp\ahk.zip" -UseBasicParsing
   Expand-Archive "$tmp\ahk.zip" -DestinationPath $ahkDir -Force
+  if (-not (Test-Path $ahkExe)) { throw "AutoHotkey 下载不完整：$ahkUrl" }
 } else {
   Say "已有 AutoHotkey"
 }
