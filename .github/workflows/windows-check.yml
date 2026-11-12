@@ -31,10 +31,24 @@ jobs:
         run: |
           $mock = Start-Process python -ArgumentList 'tests\mock_claude.py','18080' -PassThru -NoNewWindow
           Start-Sleep 2
-          $p = Start-Process ahk\AutoHotkey64.exe -ArgumentList '/ErrorStdOut=UTF-8','windows\xiaoning.ahk','--selftest','http://127.0.0.1:18080/v1/messages' -Wait -PassThru -NoNewWindow -RedirectStandardOutput st.txt -RedirectStandardError st-err.txt
+          $p = Start-Process ahk\AutoHotkey64.exe -ArgumentList '/ErrorStdOut=UTF-8','windows\xiaoning.ahk','--selftest','http://127.0.0.1:18080/v1/messages' -PassThru -NoNewWindow -RedirectStandardOutput st.txt -RedirectStandardError st-err.txt
+          if (-not $p.WaitForExit(60000)) {
+            Write-Host "--- self-test did not finish in 60s; windows on screen:"
+            Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+            $root = [Windows.Automation.AutomationElement]::RootElement
+            $wins = $root.FindAll([Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition)
+            foreach ($w in $wins) {
+              Write-Host ("WINDOW: [" + $w.Current.Name + "] class=" + $w.Current.ClassName + " pid=" + $w.Current.ProcessId)
+              if ($w.Current.ProcessId -eq $p.Id) {
+                $all = $w.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
+                foreach ($e in $all) { if ($e.Current.Name) { Write-Host ("   TEXT: " + $e.Current.Name) } }
+              }
+            }
+            Stop-Process -Id $p.Id -Force
+          }
           Get-Content st.txt, st-err.txt -Encoding UTF8
           Stop-Process -Id $mock.Id -Force
-          if ($p.ExitCode -ne 0) { Write-Error "self-test failed ($($p.ExitCode))"; exit 1 }
+          if (-not $p.HasExited -or $p.ExitCode -ne 0) { Write-Error "self-test failed ($($p.ExitCode))"; exit 1 }
 
       - name: Installer (Windows PowerShell 5.1, from this checkout)
         timeout-minutes: 3

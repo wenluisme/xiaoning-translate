@@ -8,7 +8,8 @@
 
 #Requires AutoHotkey v2.0
 #SingleInstance Force
-#Warn VarUnset, Off
+#Warn All, StdOut
+#Warn LocalSameAsGlobal, Off
 Persistent
 CoordMode "Mouse", "Screen"
 CoordMode "Caret", "Screen"
