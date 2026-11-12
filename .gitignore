@@ -1,0 +1,7 @@
+# private local settings
+config.lua
+prompts/*.txt
+!prompts/*.example.txt
+使用说明.md
+*.bak*
+.DS_Store
