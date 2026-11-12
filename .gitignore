@@ -5,3 +5,6 @@ prompts/*.txt
 使用说明.md
 *.bak*
 .DS_Store
+
+# Windows local settings
+config.ini
