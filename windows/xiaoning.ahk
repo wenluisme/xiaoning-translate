@@ -22,6 +22,7 @@ global CFG_FILE := ROOT "\config.ini"
 global TMP := A_Temp "\xiaoning"
 global REPO_RAW := "https://raw.githubusercontent.com/wenluisme/xiaoning-translate/main/"
 global REPO_URL := "https://github.com/wenluisme/xiaoning-translate"
+global updateAsking := false
 global READ_FORMAT := "
 (
 Reply in exactly this format (plain text, no Markdown, no ** or #):
@@ -1009,6 +1010,11 @@ StartUpdateChecks() {
 }
 
 CheckUpdate(manual := false) {
+  global updateAsking
+  if updateAsking
+    return
+  if (!manual && CfgRead("state", "skipUntil", "0") > A_Now)
+    return
   f := TMP "\remote-version.txt"
   try FileDelete(f)
   try RunWait('curl.exe -fsSL --max-time 20 -o "' f '" "' REPO_RAW 'VERSION?t=' A_Now '"', , "Hide")
@@ -1024,6 +1030,20 @@ CheckUpdate(manual := false) {
       Toast("小宁翻译已是最新版本 " remote, 3000)
     return
   }
+  if DirExist(ROOT "\.git") {
+    Toast("GitHub 上是 " remote "，本机是开发版（git），不自动更新", 4000)
+    return
+  }
+  updateAsking := true
+  answer := MsgBox("小宁翻译有新版本 " remote "（当前 " LocalVersion() "）。`n`n"
+    . "更新大约需要 10 秒，你的 API Key 和提示词会保留。`n"
+    . "更新内容：右键托盘图标 → 第一行「版本」。`n`n现在更新吗？", APP_NAME " · 有新版本", "YesNo Iconi 0x40000")
+  updateAsking := false
+  if (answer != "Yes") {
+    CfgWrite("state", "skipUntil", DateAdd(A_Now, 20, "Hours"))   ; ask again tomorrow
+    return
+  }
+  CfgWrite("state", "skipUntil", "0")
   Toast("小宁翻译正在更新到 " remote "…", 4000)
   ps := TMP "\update.ps1"
   try FileDelete(ps)

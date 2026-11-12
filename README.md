@@ -31,7 +31,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
 
 - Change the key / gateway: right-click the tray icon → **打开配置文件** (open config file), save, then right-click → **重新加载** (reload).
 - Custom prompts: right-click the tray icon → **打开提示词文件夹** (open prompts folder), put `write.txt` / `read.txt` there, then reload.
-- Updates: installed automatically — once a day it checks GitHub and quietly installs a new version (your key and prompts are kept). To check now: right-click the tray icon → **检查更新** (check for updates). The first item in the tray menu shows the installed version; click it to see what changed ([Releases](https://github.com/wenluisme/xiaoning-translate/releases)).
+- Updates: installed automatically — once a day it checks GitHub and, when there is a new version, asks whether to update now; click 立即更新 / Yes and it updates and restarts itself in about 10 seconds (your key and prompts are kept). To check now: right-click the tray icon → **检查更新** (check for updates). The first item in the tray menu shows the installed version; click it to see what changed ([Releases](https://github.com/wenluisme/xiaoning-translate/releases)).
 - Turn the toolbar on/off: `Ctrl+Alt+T`.
 
 ## Install on macOS (about 2 minutes)
@@ -49,7 +49,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
 4. Click the hammer icon in the menu bar → **Reload Config**.
 
 - Change the key: edit `apiKey` in `~/xiaoning-translate/config.lua`, then hammer icon → Reload Config.
-- Updates: installed automatically — once a day it checks GitHub and quietly installs a new version (your key and prompts are kept). The **译** item in the menu bar shows the installed version and has **检查更新** (check for updates); see what changed under [Releases](https://github.com/wenluisme/xiaoning-translate/releases).
+- Updates: installed automatically — once a day it checks GitHub and, when there is a new version, asks whether to update now; click 立即更新 / Yes and it updates and restarts itself in about 10 seconds (your key and prompts are kept). The **译** item in the menu bar shows the installed version and has **检查更新** (check for updates); see what changed under [Releases](https://github.com/wenluisme/xiaoning-translate/releases).
 - Turn the toolbar on/off: `⌃⌥T`.
 
 ## Toolbar buttons

@@ -1129,7 +1129,9 @@ local updating = false
 
 local function checkUpdate(manual)
   if updating then return end
-  if hs.fs.attributes(DIR .. "/.git") and not manual then return end
+  local devCopy = hs.fs.attributes(DIR .. "/.git") ~= nil
+  if devCopy and not manual then return end
+  if not manual and (hs.settings.get("xiaoning.skipUntil") or 0) > os.time() then return end
   hs.http.asyncGet(REPO_RAW .. "VERSION?t=" .. os.time(), nil, function(status, body)
     local remote = trim(body)
     if status ~= 200 or not remote or not remote:match("^%d[%w%.%-]*$") then
@@ -1140,6 +1142,19 @@ local function checkUpdate(manual)
       if manual then hs.alert.show("小宁翻译已是最新版本 " .. remote, ALERT_STYLE) end
       return
     end
+    if devCopy then
+      hs.alert.show("小宁翻译：GitHub 上是 " .. remote .. "，本机是开发版（git），不自动更新", ALERT_STYLE)
+      return
+    end
+    local choice = hs.dialog.blockAlert("小宁翻译有新版本 " .. remote,
+      "当前版本 " .. (localVersion() or "?") .. "。更新大约需要 10 秒，你的 API Key 和提示词会保留。\n更新内容见菜单栏「译」→ 版本。",
+      "立即更新", "以后再说", "informational")
+    if choice ~= "立即更新" then
+      hs.settings.set("xiaoning.skipUntil", os.time() + 20 * 3600)  -- ask again tomorrow
+      return
+    end
+    hs.settings.clear("xiaoning.skipUntil")
+    hs.alert.show("小宁翻译正在更新…", ALERT_STYLE)
     updating = true
     local cmd = "cd /tmp && curl -fsSL '" .. REPO_RAW .. "install.sh' | XN_UPDATE=1 XN_NO_OPEN=1 XN_DEST='" .. DIR:gsub("'", "") .. "' bash"
     local t = hs.task.new("/bin/bash", function(code, _, err)
@@ -1147,8 +1162,9 @@ local function checkUpdate(manual)
       if code == 0 and localVersion() == remote then
         hs.settings.set("xiaoning.updatedTo", remote)
         later(1, hs.reload)
-      elseif DEBUG then
-        print("[xiaoning] update failed: " .. tostring(err))
+      else
+        hs.alert.show("小宁翻译更新失败，请稍后再试，或重新运行安装命令", ALERT_STYLE, hs.screen.mainScreen(), 6)
+        if DEBUG then print("[xiaoning] update failed: " .. tostring(err)) end
       end
     end, { "-c", cmd })
     if not (t and t:start()) then updating = false end
@@ -1178,7 +1194,7 @@ end
 function M.start()
   -- load extensions up front so nothing gets lazily loaded inside event callbacks
   local _ = { hs.canvas, hs.axuielement, hs.mouse, hs.eventtap, hs.window, hs.webview, hs.webview.usercontent, hs.drawing, hs.styledtext, hs.settings, hs.alert, hs.timer, hs.hotkey,
-    hs.pasteboard, hs.http, hs.json, hs.chooser, hs.task, hs.base64, hs.host, hs.screen, hs.application, hs.menubar, hs.urlevent }
+    hs.pasteboard, hs.http, hs.json, hs.chooser, hs.task, hs.base64, hs.host, hs.screen, hs.application, hs.menubar, hs.urlevent, hs.dialog }
   hs.hotkey.bind({ "ctrl", "alt" }, "S", readScreenshot)
   hs.hotkey.bind({ "ctrl", "alt" }, "T", toggleAutoIcon)
   startAutoIcon()
