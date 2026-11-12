@@ -42,6 +42,15 @@ global toolbarEnabled := CfgRead("state", "toolbar", "1") = "1"
 global C_BG := "FAF9F5", C_FG := "141413", C_TEXT := "3D3929", C_MUTED := "87867F"
 global C_BORDER := "E8E6DC", C_HOVER := "F0EEE6", C_ACCENT := "C96442"
 
+; ------------------------------------------------------------ state
+global REQS := Map()
+global busy := false
+global downX := 0, downY := 0, upX := 0, upY := 0, lastUpTick := 0, lastUpX := -999, lastUpY := -999
+global tbGui := "", tbSel := "", tbButtons := Map(), tbHover := "", tbShownTick := 0
+global popGui := "", popText := "", popPinned := false, popStatus := "", popBody := "", popPinCtl := "", popBusy := false
+global toastGui := ""
+global readSeq := 0
+
 ; ------------------------------------------------------------ CI: report runtime errors instead of showing a dialog
 if (EnvGet("XN_CI") != "" || (A_Args.Length && A_Args[1] = "--selftest"))
   OnError(CiError)
@@ -55,15 +64,6 @@ if (A_Args.Length && A_Args[1] = "--selftest") {
   ExitApp(SelfTest(A_Args.Length >= 2 ? A_Args[2] : ""))
 }
 
-; ------------------------------------------------------------ state
-global REQS := Map()
-global busy := false
-global downX := 0, downY := 0, upX := 0, upY := 0, lastUpTick := 0, lastUpX := -999, lastUpY := -999
-global tbGui := "", tbSel := "", tbButtons := Map(), tbHover := "", tbShownTick := 0
-global popGui := "", popText := "", popPinned := false, popStatus := "", popBody := "", popPinCtl := "", popBusy := false
-global toastGui := ""
-global readSeq := 0
-
 SetupTray()
 OnMessage(0x200, OnMouseMove)     ; WM_MOUSEMOVE
 OnMessage(0x201, OnLButtonDown)   ; WM_LBUTTONDOWN (drag the popup by its header)
@@ -72,7 +72,6 @@ if (API_KEY = "")
   Toast("小宁翻译还没有 API Key：右键右下角托盘图标 →「打开配置文件」填写 apiKey，再选「重新加载」", 12000)
 else
   Toast("小宁翻译已就绪 · 选中文字出现工具条 · Ctrl+Alt+S 截图翻译", 3000)
-return
 
 ; ============================================================ helpers
 
