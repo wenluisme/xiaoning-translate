@@ -804,7 +804,14 @@ local function editableAt(pos)
   local depth = 0
   while el and depth < 16 do
     local role = el:attributeValue("AXRole")
-    if EDITABLE_ROLES[role] or inEditableContent(el) then return true end
+    if EDITABLE_ROLES[role] then
+      -- DingTalk marks read-only message bubbles as AXTextArea too; a real input's
+      -- AXValue is settable, a bubble's is not.
+      local settable = false
+      pcall(function() settable = el:isAttributeSettable("AXValue") end)
+      return settable
+    end
+    if inEditableContent(el) then return true end
     if role == "AXWebArea" then
       -- Apple Mail's compose body is a whole editable web area; read-only message views are not settable
       local settable = false
@@ -823,7 +830,14 @@ end
 local function isEditableElement(el)
   if not el then return false end
   local role = el:attributeValue("AXRole")
-  if EDITABLE_ROLES[role] or inEditableContent(el) then return true end
+  if EDITABLE_ROLES[role] then
+    -- DingTalk marks read-only message bubbles as AXTextArea too; a real input's
+    -- AXValue is settable, a bubble's is not.
+    local settable = false
+    pcall(function() settable = el:isAttributeSettable("AXValue") end)
+    return settable
+  end
+  if inEditableContent(el) then return true end
   local settable = false
   pcall(function() settable = el:isAttributeSettable("AXValue") end)
   return settable and role ~= "AXStaticText"
