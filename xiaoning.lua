@@ -1,9 +1,10 @@
--- 小宁翻译 · XiaoNing Translate (Hammerspoon)
+-- XiaoNing Translate (小宁翻译) for macOS — runs in Hammerspoon.
 --
--- 用鼠标选中文字 → 旁边弹出工具条 → 点按钮执行
--- 客户消息（只读）→ 翻译 · 复制 · 更多
--- 自己输入框（可编辑）→ 翻译 · 译成英文 · 译成〔上次语言〕· 其他语言 · 润色 · 复制
--- ⌃⌥S 截图翻译；⌃⌥T 开关工具条
+-- Select text with the mouse → a toolbar pops up next to it → click a button.
+--   In someone else's message (read-only): Translate · Copy · More
+--   In your own input box: Translate · To English · To <last language> · Other languages · Polish · Copy
+-- ⌃⌥S screenshot translation; ⌃⌥T toggles the toolbar.
+-- UI text is in Chinese on purpose (the tool is built for a Chinese-speaking support team).
 
 local M = {}
 
@@ -351,7 +352,7 @@ local function dropRequests(keepKey)
   end
 end
 
--- ---------------------------------------------------------------- popup (小宁翻译 card)
+-- ---------------------------------------------------------------- popup (translation card)
 
 local APP_NAME = "小宁翻译"
 

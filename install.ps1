@@ -1,7 +1,9 @@
-# 小宁翻译 (XiaoNing Translate) — Windows one-step installer.
+# XiaoNing Translate (小宁翻译) — one-step installer for Windows.
 #
-# 在 PowerShell 里运行（开始菜单搜 PowerShell）：
+# Run in PowerShell (Start menu → search "PowerShell"):
 #   irm https://raw.githubusercontent.com/wenluisme/xiaoning-translate/main/install.ps1 | iex
+#
+# Messages shown during installation are in Chinese for the team this was built for.
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -68,7 +70,7 @@ if (-not (Test-Path $cfg)) {
   if ($env:XN_ENDPOINT) { $ep = $env:XN_ENDPOINT } else { $ep = Read-Host "接口地址（直接回车用官方地址）" }
   if (-not $ep) { $ep = 'https://api.anthropic.com/v1/messages' }
   $ini = "[api]`r`nendpoint=$ep`r`napiKey=$key`r`nmodel=claude-sonnet-5-5`r`n`r`n[state]`r`nlastLanguage=Spanish`r`ntoolbar=1`r`n"
-  [IO.File]::WriteAllText($cfg, $ini, (New-Object Text.UnicodeEncoding $false, $true))   # UTF-16 LE, what IniRead expects
+  [IO.File]::WriteAllText($cfg, $ini, (New-Object Text.UnicodeEncoding $false, $true))  # UTF-16 LE with BOM, required by AutoHotkey IniRead
 } else {
   Say "已有配置文件 $cfg，保留不动"
 }

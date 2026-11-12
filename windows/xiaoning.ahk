@@ -1,9 +1,10 @@
-; 小宁翻译 · XiaoNing Translate — Windows 版 (AutoHotkey v2)
+; XiaoNing Translate (小宁翻译) for Windows — AutoHotkey v2.
 ;
-; 用鼠标选中文字 → 旁边弹出工具条 → 点按钮执行
-;   客户消息（不能编辑）→ 翻译 · 复制 · 更多
-;   自己的输入框        → 翻译 · 译成英文 · 译成〔上次语言〕· 其他语言 · 润色 · 复制
-; Ctrl+Alt+S 截图翻译；Ctrl+Alt+T 开关工具条。托盘图标右键可打开配置 / 重新加载。
+; Select text with the mouse → a toolbar pops up next to it → click a button.
+;   In someone else's message (read-only): Translate · Copy · More
+;   In your own input box: Translate · To English · To <last language> · Other languages · Polish · Copy
+; Ctrl+Alt+S screenshot translation; Ctrl+Alt+T toggles the toolbar. Right-click the tray icon for config / reload.
+; UI text is in Chinese on purpose (the tool is built for a Chinese-speaking support team).
 
 #Requires AutoHotkey v2.0
 #SingleInstance Force
@@ -585,7 +586,7 @@ Housekeeping() {
     try popStatus.Opt("c" (Mod(A_TickCount // 500, 2) ? C_ACCENT : "E8B9A6")), popStatus.Redraw()
 }
 
-; ============================================================ popup (小宁翻译 card)
+; ============================================================ popup (translation card)
 
 EnsurePopup() {
   global popGui, popStatus, popBody, popPinCtl
@@ -703,7 +704,7 @@ OnLButtonDown(wParam, lParam, msg, hwnd) {
 Esc:: HidePopup()
 #HotIf
 
-; ============================================================ read (translate into Chinese)
+; ============================================================ read: translate the selection into Chinese
 
 ReadText(text) {
   global readSeq
@@ -731,7 +732,7 @@ ReadText(text) {
   Listen(r, onDelta, onDone)
 }
 
-; ============================================================ write (translate + polish, replace)
+; ============================================================ write: translate + polish, replace the selection
 
 RunWrite(target, sel) {
   global busy

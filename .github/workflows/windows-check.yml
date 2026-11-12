@@ -7,10 +7,12 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - name: Get AutoHotkey v2
+        timeout-minutes: 3
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -23,14 +25,8 @@ jobs:
           Expand-Archive ahk.zip -DestinationPath ahk
           Get-ChildItem ahk | Select-Object Name
 
-      - name: Validate script syntax
-        shell: pwsh
-        run: |
-          $p = Start-Process ahk\AutoHotkey64.exe -ArgumentList '/ErrorStdOut=UTF-8','/validate','windows\xiaoning.ahk' -Wait -PassThru -NoNewWindow -RedirectStandardError err.txt -RedirectStandardOutput out.txt
-          Get-Content err.txt, out.txt -Encoding UTF8
-          if ($p.ExitCode -ne 0) { Write-Error "syntax check failed ($($p.ExitCode))"; exit 1 }
-
-      - name: Self-test (JSON, SSE, streaming client against a mock API)
+      - name: Load script + self-test (syntax, JSON, SSE, streaming client against a mock API)
+        timeout-minutes: 3
         shell: pwsh
         run: |
           $mock = Start-Process python -ArgumentList 'tests\mock_claude.py','18080' -PassThru -NoNewWindow
@@ -41,6 +37,7 @@ jobs:
           if ($p.ExitCode -ne 0) { Write-Error "self-test failed ($($p.ExitCode))"; exit 1 }
 
       - name: Installer (Windows PowerShell 5.1, from this checkout)
+        timeout-minutes: 3
         shell: powershell
         env:
           XN_SOURCE_DIR: ${{ github.workspace }}
@@ -60,6 +57,7 @@ jobs:
           Write-Host "installer OK"
 
       - name: Installed app starts and stays running
+        timeout-minutes: 3
         shell: pwsh
         env:
           XN_CI: '1'

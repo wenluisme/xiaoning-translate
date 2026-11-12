@@ -1,5 +1,6 @@
 #!/bin/bash
-# 小宁翻译 (XiaoNing Translate) — one-step installer for macOS.
+# XiaoNing Translate (小宁翻译) — one-step installer for macOS.
+# Messages shown during installation are in Chinese for the team this was built for.
 #
 #   curl -fsSL https://raw.githubusercontent.com/wenluisme/xiaoning-translate/main/install.sh | bash
 #
@@ -62,7 +63,7 @@ if [ ! -f "$CFG" ]; then
   KEY="${KEY//\\/\\\\}"; KEY="${KEY//\"/\\\"}"
   ENDPOINT="${ENDPOINT//\"/}"
   cat > "$CFG" <<EOF
--- 小宁翻译 本机配置（不会上传）
+-- XiaoNing Translate — local config (never committed)
 return {
   endpoint = "$ENDPOINT",
   apiKey = "$KEY",
@@ -80,7 +81,7 @@ mkdir -p "$HOME/.hammerspoon"
 if ! grep -q 'require("xiaoning")' "$INIT" 2>/dev/null; then
   cat >> "$INIT" <<EOF
 
--- 小宁翻译 (XiaoNing Translate)
+-- XiaoNing Translate
 require("hs.ipc")
 hs.autoLaunch(true)
 package.path = "$DEST/?.lua;" .. package.path
