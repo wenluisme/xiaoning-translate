@@ -1178,7 +1178,12 @@ local function setupMenu()
   if M.menu then M.menu:delete() end
   M.menu = hs.menubar.new()
   if not M.menu then return end
-  M.menu:setTitle("译")
+  local img = hs.image.imageFromPath(DIR .. "/assets/icon/menubar@2x.png")
+  if img then
+    M.menu:setIcon(img:setSize({ w = 18, h = 18 }), true)  -- template image: macOS tints it black/white
+  else
+    M.menu:setTitle("译")
+  end
   M.menu:setTooltip("小宁翻译 XiaoNing Translate")
   M.menu:setMenu(function()
     return {
@@ -1194,7 +1199,7 @@ end
 function M.start()
   -- load extensions up front so nothing gets lazily loaded inside event callbacks
   local _ = { hs.canvas, hs.axuielement, hs.mouse, hs.eventtap, hs.window, hs.webview, hs.webview.usercontent, hs.drawing, hs.styledtext, hs.settings, hs.alert, hs.timer, hs.hotkey,
-    hs.pasteboard, hs.http, hs.json, hs.chooser, hs.task, hs.base64, hs.host, hs.screen, hs.application, hs.menubar, hs.urlevent, hs.dialog }
+    hs.pasteboard, hs.http, hs.json, hs.chooser, hs.task, hs.base64, hs.host, hs.screen, hs.application, hs.menubar, hs.urlevent, hs.dialog, hs.image }
   hs.hotkey.bind({ "ctrl", "alt" }, "S", readScreenshot)
   hs.hotkey.bind({ "ctrl", "alt" }, "T", toggleAutoIcon)
   startAutoIcon()

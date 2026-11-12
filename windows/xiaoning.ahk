@@ -970,6 +970,9 @@ ScreenshotTranslate() {
 ; ============================================================ tray
 
 SetupTray() {
+  ico := ROOT "\assets\icon\icon.ico"
+  if FileExist(ico)
+    TraySetIcon(ico)
   ver := LocalVersion()
   A_IconTip := APP_NAME " · XiaoNing Translate" (ver != "" ? " " ver : "")
   m := A_TrayMenu

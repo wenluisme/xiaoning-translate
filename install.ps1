@@ -96,6 +96,6 @@ if ($env:XN_NO_START -ne '1') {
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
-Write-Host "安装完成！小宁翻译已在后台运行（右下角托盘区有绿色 H 图标），以后开机会自动启动。" -ForegroundColor Green
+Write-Host "安装完成！小宁翻译已在后台运行（右下角托盘区有橙色对话气泡图标），以后开机会自动启动。" -ForegroundColor Green
 Write-Host "用法：用鼠标选中任意文字，旁边会出现工具条，点「翻译」「译成英文」等按钮即可；Ctrl+Alt+S 截图翻译。"
 Write-Host "业务术语提示词（write.txt / read.txt）放到：$Dest\prompts\ ，然后右键托盘图标 → 重新加载。"

@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon/icon.png" width="112" alt="XiaoNing Translate logo"></p>
+
 # XiaoNing Translate (小宁翻译)
 
 A select-to-translate tool for people who talk to customers in other languages, powered by Claude. **Works on macOS and Windows.**
@@ -27,7 +29,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
    It downloads XiaoNing Translate and the free [AutoHotkey](https://www.autohotkey.com) runtime (no admin rights needed), asks for your API key, and sets it to start with Windows.
 
 2. When asked for an **API key**, paste your Claude API key (starts with `sk-ant-`). If your company uses a gateway, enter its URL next. You can press Enter to skip and add them later.
-3. A green **H** icon appears in the system tray. When you see the "小宁翻译已就绪" (ready) message, you're good to go.
+3. The XiaoNing Translate icon (an orange speech bubble) appears in the system tray. When you see the "小宁翻译已就绪" (ready) message, you're good to go.
 
 - Change the key / gateway: right-click the tray icon → **打开配置文件** (open config file), save, then right-click → **重新加载** (reload).
 - Custom prompts: right-click the tray icon → **打开提示词文件夹** (open prompts folder), put `write.txt` / `read.txt` there, then reload.
@@ -49,7 +51,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
 4. Click the hammer icon in the menu bar → **Reload Config**.
 
 - Change the key: edit `apiKey` in `~/xiaoning-translate/config.lua`, then hammer icon → Reload Config.
-- Updates: installed automatically — once a day it checks GitHub and, when there is a new version, asks whether to update now; click 立即更新 / Yes and it updates and restarts itself in about 10 seconds (your key and prompts are kept). The **译** item in the menu bar shows the installed version and has **检查更新** (check for updates); see what changed under [Releases](https://github.com/wenluisme/xiaoning-translate/releases).
+- Updates: installed automatically — once a day it checks GitHub and, when there is a new version, asks whether to update now; click 立即更新 / Yes and it updates and restarts itself in about 10 seconds (your key and prompts are kept). The XiaoNing Translate icon in the menu bar shows the installed version and has **检查更新** (check for updates); see what changed under [Releases](https://github.com/wenluisme/xiaoning-translate/releases).
 - Turn the toolbar on/off: `⌃⌥T`.
 
 ## Toolbar buttons

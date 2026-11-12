@@ -62,7 +62,7 @@ jobs:
           $code = [IO.File]::ReadAllText("$env:GITHUB_WORKSPACE\install.ps1", [Text.Encoding]::UTF8)
           Invoke-Expression $code
           $dest = Join-Path $env:LOCALAPPDATA 'xiaoning-translate'
-          foreach ($f in 'windows\xiaoning.ahk','AutoHotkey\AutoHotkey64.exe','config.ini','prompts\write.example.txt') {
+          foreach ($f in 'windows\xiaoning.ahk','AutoHotkey\AutoHotkey64.exe','config.ini','prompts\write.example.txt','assets\icon\icon.ico','VERSION') {
             if (-not (Test-Path (Join-Path $dest $f))) { Write-Error "missing $f"; exit 1 }
           }
           $ini = Get-Content (Join-Path $dest 'config.ini') -Raw
