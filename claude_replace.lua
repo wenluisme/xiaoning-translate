@@ -40,7 +40,8 @@ local PROMPT_FILE = promptPath("write")
 local READ_PROMPT_FILE = promptPath("read")
 
 local ENDPOINT = CFG.endpoint or "https://api.anthropic.com/v1/messages"
-local MODEL = CFG.model or "claude-sonnet-5-5"
+local MODEL_WRITE = CFG.model or CFG.writeModel or "claude-sonnet-5-5"
+local MODEL_READ = CFG.readModel or MODEL_WRITE
 local TIMEOUT = CFG.timeout or 45
 local CLAUDE_SETTINGS_FILE = HOME .. "/.claude/settings.json"
 
@@ -189,19 +190,30 @@ local function grabText(selectAllIfEmpty)
   return text, saved, selectedAll
 end
 
--- Call Claude; callback(resultText or nil, errorMessage or nil)
-local function callClaude(system, content, callback)
-  local token = authToken()
-  if not token or not system then
-    callback(nil, "读取配置失败：没有 API Key（请在 config.lua 里设置 apiKey），或缺少提示词文件")
-    return
-  end
-  local body = hs.json.encode({
-    model = MODEL,
+-- Sonnet/Opus 5.x think before answering by default; for plain translation that only adds delay.
+-- "between_tools" skips thinking when no tools are involved (≈1.5–2 s faster to the first word).
+local function requestBody(system, content, stream, model)
+  local body = {
+    model = model or MODEL_WRITE,
     max_tokens = 2048,
     system = system,
     messages = { { role = "user", content = content } },
-  })
+    stream = stream or nil,
+  }
+  local thinking = CFG.thinking
+  if thinking == nil and (body.model:find("sonnet") or body.model:find("opus")) then thinking = "between_tools" end
+  if thinking and thinking ~= "default" then body.thinking = { type = thinking } end
+  return hs.json.encode(body)
+end
+
+local function missingConfigError()
+  return "读取配置失败：没有 API Key（请在 config.lua 里设置 apiKey），或缺少提示词文件"
+end
+
+-- Non-streaming call; callback(resultText or nil, errorMessage or nil). Used for screenshots.
+local function callClaude(system, content, callback)
+  local token = authToken()
+  if not token or not system then callback(nil, missingConfigError()) return end
   local headers = {
     ["content-type"] = "application/json",
     ["x-api-key"] = token,
@@ -213,7 +225,7 @@ local function callClaude(system, content, callback)
     finished = true
     callback(nil, "超时了：Claude 没有响应，请检查网络或 config.lua 里的 endpoint")
   end)
-  hs.http.asyncPost(ENDPOINT, body, headers, function(status, respBody)
+  hs.http.asyncPost(ENDPOINT, requestBody(system, content, false, MODEL_READ), headers, function(status, respBody)
     if finished then return end
     finished = true
     cancel(watchdog)
@@ -230,6 +242,109 @@ local function callClaude(system, content, callback)
     end
     callback(nil, "出错了（" .. tostring(status) .. "）：" .. tostring(respBody or ""):sub(1, 160))
   end)
+end
+
+-- Streaming call through curl; onDelta(fullTextSoFar), onDone(text or nil, err or nil).
+-- Returns a handle with :cancel().
+local liveTasks = {}
+local function streamClaude(system, content, onDelta, onDone, model)
+  local token = authToken()
+  if not token or not system then onDone(nil, missingConfigError()) return { cancel = function() end } end
+  local buffer, text, finished, raw = "", "", false, ""
+  local function finish(result, err)
+    if finished then return end
+    finished = true
+    onDone(result, err)
+  end
+  local bodyFile = os.tmpname()
+  local bf = io.open(bodyFile, "w")
+  bf:write(requestBody(system, content, true, model))
+  bf:close()
+  local task
+  task = hs.task.new("/usr/bin/curl", function(code, stdout, stderr)
+    liveTasks[task] = nil
+    os.remove(bodyFile)
+    if finished then return end
+    local t = text:gsub("^%s+", ""):gsub("%s+$", "")
+    if t ~= "" then finish(t, nil) return end
+    local msg = raw:match('"message"%s*:%s*"([^"]+)"') or (stderr ~= "" and stderr) or raw
+    finish(nil, "出错了（curl " .. tostring(code) .. "）：" .. tostring(msg):sub(1, 160))
+  end, function(_, stdout, _)
+    if finished then return false end
+    raw = (raw .. (stdout or "")):sub(-2000)
+    buffer = buffer .. (stdout or "")
+    while true do
+      local nl = buffer:find("\n", 1, true)
+      if not nl then break end
+      local line = buffer:sub(1, nl - 1)
+      buffer = buffer:sub(nl + 1)
+      local data = line:match("^data:%s*(.*)$")
+      if data and data ~= "" then
+        local ok, ev = pcall(hs.json.decode, data)
+        if ok and ev then
+          if ev.type == "content_block_delta" and ev.delta and ev.delta.type == "text_delta" then
+            text = text .. (ev.delta.text or "")
+            onDelta(text)
+          elseif ev.type == "error" then
+            finish(nil, "出错了：" .. tostring(ev.error and ev.error.message or data):sub(1, 160))
+          end
+        end
+      end
+    end
+    return true
+  end, {
+    "-sS", "-N", "--max-time", tostring(TIMEOUT), ENDPOINT,
+    "-H", "content-type: application/json",
+    "-H", "x-api-key: " .. token,
+    "-H", "anthropic-version: 2023-06-01",
+    "--data-binary", "@" .. bodyFile,
+  })
+  liveTasks[task] = true
+  task:start()
+  return { cancel = function()
+    finished = true
+    if task:isRunning() then task:terminate() end
+    liveTasks[task] = nil
+    os.remove(bodyFile)
+  end }
+end
+
+-- Requests keyed by action+text, so a request started on hover is reused when you click.
+local requests = {}
+
+local function request(key, system, content, model)
+  local r = requests[key]
+  if r then return r end
+  r = { text = "", done = false, err = nil, listeners = {} }
+  requests[key] = r
+  r.handle = streamClaude(system, content,
+    function(t)
+      r.text = t
+      for _, l in ipairs(r.listeners) do if l.onDelta then l.onDelta(t) end end
+    end,
+    function(t, err)
+      r.done, r.err = true, err
+      if t then r.text = t end
+      for _, l in ipairs(r.listeners) do l.onDone(t, err) end
+      r.listeners = {}
+    end, model)
+  return r
+end
+
+local function listen(r, onDelta, onDone)
+  if r.done then onDone(r.err and nil or r.text, r.err) return end
+  if onDelta and r.text ~= "" then onDelta(r.text) end
+  table.insert(r.listeners, { onDelta = onDelta, onDone = onDone })
+end
+
+-- Cancel unfinished requests that nobody is waiting for (except keepKey).
+local function dropRequests(keepKey)
+  for k, r in pairs(requests) do
+    if k ~= keepKey and (r.done or #r.listeners == 0) then
+      if not r.done and r.handle then r.handle.cancel() end
+      requests[k] = nil
+    end
+  end
 end
 
 -- ---------------------------------------------------------------- popup
@@ -262,10 +377,11 @@ local function popupHTML(title, body, isText)
   button{background:]] .. btn .. [[;color:]] .. fg .. [[;border:0;border-radius:6px;padding:3px 10px;
     margin-left:6px;font-size:12px;cursor:pointer}
   .body{padding:10px 14px 14px;white-space:pre-wrap;word-wrap:break-word;-webkit-user-select:text}
-  </style></head><body>
-  <div class="bar"><span>]] .. htmlEscape(title) .. [[</span>]] .. copyBtn ..
+  </style><script>function setBody(t){document.getElementById("b").textContent=t}
+  function setTitle(t){document.getElementById("t").textContent=t}</script></head><body>
+  <div class="bar"><span id="t">]] .. htmlEscape(title) .. [[</span>]] .. copyBtn ..
   [[<button onclick="window.webkit.messageHandlers.cr.postMessage('close')">×</button></div>
-  <div class="body">]] .. htmlEscape(body) .. [[</div></body></html>]]
+  <div class="body" id="b">]] .. htmlEscape(body) .. [[</div></body></html>]]
 end
 
 local function showPopup(title, body, isText)
@@ -306,7 +422,38 @@ local function showPopup(title, body, isText)
   popup:show()
 end
 
+-- Update the popup body in place while text streams in (no reload, no flicker).
+local function popupStream(text)
+  if not popup then return end
+  popup:evaluateJavaScript("setBody(" .. hs.json.encode({ text }) .. "[0])")
+end
+
 -- ---------------------------------------------------------------- write: translate & replace
+
+local function writeSystem(targetLanguage)
+  local tpl = readFile(PROMPT_FILE)
+  local task
+  if targetLanguage then
+    task = "Translate and polish the draft into " .. targetLanguage ..
+      ". If the draft is already in " .. targetLanguage .. ", just polish it."
+  else
+    task = "Polish the draft in the same language it is written in. Do not translate it."
+  end
+  return tpl and tpl:gsub("{{TASK}}", function() return task end)
+end
+
+local function writeKey(targetLanguage, text)
+  return "write:" .. tostring(targetLanguage) .. ":" .. text
+end
+
+local function paste(app)
+  local bid = app and app:bundleID()
+  if bid and menuCopyApps[bid] then
+    -- apps that ignore a synthetic ⌘C usually ignore ⌘V too
+    if app:selectMenuItem({ "编辑", "粘贴" }) or app:selectMenuItem({ "Edit", "Paste" }) then return end
+  end
+  hs.eventtap.keyStroke({ "cmd" }, "v", 0)
+end
 
 -- preset = { text = ..., editable = true|false|nil } when called from the selection toolbar.
 local function run(targetLanguage, preset)
@@ -318,7 +465,7 @@ local function run(targetLanguage, preset)
   else
     text, saved, selectedAll = grabText(true)
   end
-  log("run target=" .. tostring(targetLanguage) .. " app=" .. tostring(app and app:bundleID()) .. " copy=" .. tostring(copyMethod) .. " text=" .. short(text))
+  log("run target=" .. tostring(targetLanguage) .. " app=" .. tostring(app and app:bundleID()) .. " text=" .. short(text))
   if not text or text:match("^%s*$") then
     restoreClipboard(saved)
     showAlert("没有找到文字：请先把光标放在输入框里，或选中要处理的文字")
@@ -330,25 +477,19 @@ local function run(targetLanguage, preset)
     return
   end
 
-  local tpl = readFile(PROMPT_FILE)
-  local task
-  if targetLanguage then
-    task = "Translate and polish the draft into " .. targetLanguage ..
-      ". If the draft is already in " .. targetLanguage .. ", just polish it."
-  else
-    task = "Polish the draft in the same language it is written in. Do not translate it."
-  end
-  local system = tpl and tpl:gsub("{{TASK}}", function() return task end)
-
   busy = true
   local label = targetLanguage and ("翻译润色 → " .. (LANG_ZH[targetLanguage] or targetLanguage)) or "润色中"
-  showAlert("⏳ " .. label .. "…", TIMEOUT)
+  local key = writeKey(targetLanguage, text)
+  local r = request(key, writeSystem(targetLanguage), text)
+  if not r.done then showAlert("⏳ " .. label .. "…", TIMEOUT) end
 
-  callClaude(system, text, function(result, err)
+  listen(r, nil, function(result, err)
     busy = false
+    requests[key] = nil
+    closeAlert()
     if not result then
       restoreClipboard(saved)
-      showAlert(err, 5)
+      showAlert(err or "出错了", 5)
       return
     end
     -- selection that can't be edited (e.g. a customer's message): just show the result
@@ -366,15 +507,10 @@ local function run(targetLanguage, preset)
       hs.eventtap.keyStroke({ "cmd" }, "a", 0)
       hs.timer.usleep(60000)
     end
-    hs.eventtap.keyStroke({ "cmd" }, "v", 0)
+    paste(app)
     log("run pasted result=" .. short(result))
-    if preset and preset.editable == nil then
-      -- can't tell whether this app accepted the paste: leave the result on the clipboard as a backup
-      showAlert("✅ 已替换（⌘Z 撤销）· 结果也在剪贴板里", 2)
-    else
-      later(0.6, function() restoreClipboard(saved) end)
-      showAlert("✅ 已替换（⌘Z 撤销）", 1.5)
-    end
+    later(0.6, function() restoreClipboard(saved) end)
+    showAlert("✅ 已替换（⌘Z 撤销）", 1.2)
   end)
 end
 
@@ -382,15 +518,22 @@ end
 
 local readSeq = 0
 
+local function readKey(text) return "read:" .. text end
+
 local function readText(text)
   if #text > 20000 then text = text:sub(1, 20000) end
   readSeq = readSeq + 1
   local mySeq = readSeq
-  showPopup("翻译中…", text, false)
-  callClaude(readFile(READ_PROMPT_FILE), text, function(result, err)
-    if not popup or mySeq ~= readSeq then return end
-    if result then showPopup("译文", result, true) else showPopup("出错了", err, false) end
-  end)
+  local key = readKey(text)
+  local r = request(key, readFile(READ_PROMPT_FILE), text, MODEL_READ)
+  showPopup(r.done and "译文" or "翻译中…", r.text, false)
+  listen(r,
+    function(t) if popup and mySeq == readSeq then popupStream(t) end end,
+    function(result, err)
+      requests[key] = nil
+      if not popup or mySeq ~= readSeq then return end
+      if result then showPopup("译文", result, true) else showPopup("出错了", err or "出错了", false) end
+    end)
 end
 
 local function readSelection()
@@ -417,10 +560,11 @@ local toolbarButtons = {}
 local mouseDownPos = nil
 local mouseTap = nil
 
-local function hideToolbar()
+local function hideToolbar(keepKey)
   cancel(toolbarTimer) toolbarTimer = nil
   if toolbar then toolbar:delete() toolbar = nil end
   toolbarSel = nil
+  dropRequests(keepKey)
 end
 
 local function pointIn(p, f)
@@ -429,29 +573,58 @@ end
 
 local EDITABLE_ROLES = { AXTextField = true, AXTextArea = true, AXComboBox = true, AXSearchField = true }
 
--- Returns selected text and whether it sits in an editable field (true / false / nil = unknown).
+-- Is the text under the mouse inside an input box? true / false / nil (app exposes nothing).
+local axPrimed = {}
+local function editableAt(pos)
+  local app = hs.application.frontmostApplication()
+  if not app then return nil end
+  local ax = hs.axuielement.applicationElement(app)
+  if ax and not axPrimed[app:pid()] then
+    -- Chromium/Electron apps only build their accessibility tree when asked
+    axPrimed[app:pid()] = true
+    pcall(function() ax:setAttributeValue("AXManualAccessibility", true) end)
+  end
+  local ok, el = pcall(function() return ax:elementAtPosition(pos.x, pos.y) end)
+  if not ok or not el then return nil end
+  local depth = 0
+  while el and depth < 8 do
+    local role = el:attributeValue("AXRole")
+    if EDITABLE_ROLES[role] then return true end
+    if role == "AXWebArea" or role == "AXWindow" or role == "AXApplication" then return false end
+    el = el:attributeValue("AXParent")
+    depth = depth + 1
+  end
+  return false
+end
+
+-- Returns the selected text and whether it can be edited (true / false).
 -- Reads via Accessibility when possible; otherwise a silent copy that restores the clipboard.
-local function selectedText()
+local function selectedText(pos)
+  local editable = editableAt(pos)
   local ok, el = pcall(function()
     return hs.axuielement.systemWideElement():attributeValue("AXFocusedUIElement")
   end)
-  local editable = nil
+  local text = nil
   if ok and el then
-    local role = el:attributeValue("AXRole")
-    local settable = false
-    pcall(function() settable = el:isAttributeSettable("AXValue") end)
-    if EDITABLE_ROLES[role] or settable then editable = true
-    elseif role == "AXWebArea" or role == "AXStaticText" or role == "AXGroup" or role == "AXScrollArea" then editable = false end
     local ok2, sel = pcall(function() return el:attributeValue("AXSelectedText") end)
-    log("  ax role=" .. tostring(role) .. " editable=" .. tostring(editable) .. " selectedText=" .. short(ok2 and sel or "ERR"))
-    if ok2 and type(sel) == "string" and not sel:match("^%s*$") then return sel, editable end
-  else
-    log("  ax focused element: none")
+    if ok2 and type(sel) == "string" and not sel:match("^%s*$") then
+      text = sel
+      if editable == nil then
+        local role = el:attributeValue("AXRole")
+        local settable = false
+        pcall(function() settable = el:isAttributeSettable("AXValue") end)
+        editable = EDITABLE_ROLES[role] or settable or false
+      end
+    end
   end
-  local text, saved = grabText(false)
-  restoreClipboard(saved)
-  log("  copy via " .. tostring(copyMethod) .. " text=" .. short(text))
-  return text, editable
+  if not text then
+    local saved
+    text, saved = grabText(false)
+    restoreClipboard(saved)
+  end
+  log("  editable=" .. tostring(editable) .. " text=" .. short(text))
+  -- nothing tells us it's an input box → treat it as read-only (the 「更多」 button shows everything)
+  return text, editable == true
 end
 
 local function worthShowing(text)
@@ -467,8 +640,28 @@ end
 
 local chooseLanguage -- defined below
 
+local showToolbar -- defined below
+
+local function actionKey(id, sel)
+  if id == "read" then return readKey(sel.text)
+  elseif id == "en" then return writeKey("English", sel.text)
+  elseif id == "last" then return writeKey(lastLanguage, sel.text)
+  elseif id == "polish" then return writeKey(nil, sel.text) end
+  return nil
+end
+
+-- Start the request as soon as the mouse is over a button, so clicking feels instant.
+local function prefetch(id, sel)
+  if #sel.text > 8000 and id ~= "read" then return end
+  if id == "read" then request(readKey(sel.text), readFile(READ_PROMPT_FILE), sel.text, MODEL_READ)
+  elseif id == "en" then request(writeKey("English", sel.text), writeSystem("English"), sel.text)
+  elseif id == "last" then request(writeKey(lastLanguage, sel.text), writeSystem(lastLanguage), sel.text)
+  elseif id == "polish" then request(writeKey(nil, sel.text), writeSystem(nil), sel.text) end
+end
+
 local function toolbarAction(id, sel)
-  if id == "read" then readText(sel.text)
+  if id == "expand" then showToolbar({ text = sel.text, editable = true, pos = sel.pos, expanded = true }, sel.pos)
+  elseif id == "read" then readText(sel.text)
   elseif id == "en" then run("English", sel)
   elseif id == "last" then run(lastLanguage, sel)
   elseif id == "more" then chooseLanguage(sel)
@@ -479,7 +672,7 @@ local function toolbarAction(id, sel)
   end
 end
 
-local function showToolbar(sel, pos)
+showToolbar = function(sel, pos)
   hideToolbar()
   toolbarSel = sel
   toolbarButtons = {}
@@ -494,6 +687,7 @@ local function showToolbar(sel, pos)
     table.insert(buttons, { id = "polish", label = "润色" })
   end
   table.insert(buttons, { id = "copy", label = "复制" })
+  if sel.editable == false then table.insert(buttons, { id = "expand", label = "更多" }) end
 
   local dark = hs.host.interfaceStyle() == "Dark"
   local bg = dark and { red = 0.17, green = 0.17, blue = 0.18, alpha = 0.97 } or { red = 0.97, green = 0.97, blue = 0.97, alpha = 0.97 }
@@ -550,12 +744,14 @@ local function showToolbar(sel, pos)
   toolbar:mouseCallback(function(c, message, id)
     local idx = hitIndex[id]
     if not idx then return end
-    if message == "mouseEnter" then c[idx].fillColor = hover
+    if message == "mouseEnter" then
+      c[idx].fillColor = hover
+      if toolbarSel then prefetch(id, toolbarSel) end
     elseif message == "mouseExit" then c[idx].fillColor = { alpha = 0 }
     elseif message == "mouseDown" then
       local s = toolbarSel
-      hideToolbar()
-      if s then later(0.05, function() toolbarAction(id, s) end) end
+      hideToolbar(s and actionKey(id, s))
+      if s then later(0.02, function() toolbarAction(id, s) end) end
     end
   end)
   toolbar:show()
@@ -576,10 +772,10 @@ local function onMouseUp(e)
   log(string.format("mouseUp app=%s dragged=%s clicks=%d", bid, tostring(dragged), clicks))
   if EXCLUDED_APPS[bid] then return end
   later(0.15, function()
-    local text, editable = selectedText()
+    local text, editable = selectedText(up)
     local worth = worthShowing(text)
     log("  worth=" .. tostring(worth))
-    if worth then showToolbar({ text = text, editable = editable }, up) end
+    if worth then showToolbar({ text = text, editable = editable, pos = up }, up) end
   end)
 end
 
@@ -673,9 +869,11 @@ M.showPopup = showPopup
 M.closePopup = closePopup
 M.callClaude = callClaude
 
-M.paths = function() return { dir = DIR, write = PROMPT_FILE, read = READ_PROMPT_FILE, endpoint = ENDPOINT, model = MODEL, hasKey = authToken() ~= nil } end
+M.paths = function() return { dir = DIR, write = PROMPT_FILE, read = READ_PROMPT_FILE, endpoint = ENDPOINT, model = MODEL_WRITE, readModel = MODEL_READ, hasKey = authToken() ~= nil } end
 
 M.toolbarButtons = function() return toolbar and toolbarButtons or {} end
+
+M._test = { request = function(...) return request(...) end, readKey = function(...) return readKey(...) end, writeKey = function(...) return writeKey(...) end, writeSystem = function(...) return writeSystem(...) end, readPrompt = function() return readFile(READ_PROMPT_FILE) end, editableAt = function(p) return editableAt(p) end, listen = function(...) return listen(...) end }
 
 M.debugState = function()
   return { icon = toolbar ~= nil, iconFrame = toolbar and toolbar:frame(), iconText = toolbarSel and toolbarSel.text, editable = toolbarSel and toolbarSel.editable, popup = popup ~= nil, popupFrame = popup and popup:frame(), popupVisible = popup and popup:isVisible(), tap = mouseTap and mouseTap:isEnabled(), auto = toolbarEnabled }

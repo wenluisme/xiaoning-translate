@@ -11,6 +11,7 @@ return {
   -- in ~/.claude/settings.json). Handy if you already run Claude Code with a gateway.
   useClaudeCodeSettings = false,
 
-  model = "claude-sonnet-5-5",
+  model = "claude-sonnet-5-5",    -- for write/replace hotkeys
+  -- readModel = "claude-haiku-4-5", -- optional: separate model for translate popups
   timeout = 45,
 }

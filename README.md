@@ -8,7 +8,8 @@ Select any text with the mouse and a small toolbar pops up next to it (like the 
 
 - **Translate** shows the translation in a popup (customer message → Chinese; Chinese → English), the original stays untouched.
 - **To English / Other languages / Polish** translate **and polish** your draft and write the result straight back over the selection — in any app: Intercom, email, Telegram, WhatsApp, Slack. `⌘Z` to undo.
-- If the selection can't be edited (e.g. a customer's message), only Translate and Copy are shown.
+- If the text under the mouse isn't an input box (e.g. a customer's message), only Translate, Copy and 更多 (show all) are shown.
+- Fast: the translation streams into the popup as it's generated, and a request starts as soon as you hover a button, so the result is often ready by the time you click.
 - `⌃⌥S`: grab a screen region and let Claude read + translate it (error screenshots get a one-line explanation).
 
 No app to install besides Hammerspoon, no subscription — it uses your own Anthropic API key (or any Anthropic-compatible gateway).
@@ -50,7 +51,8 @@ The toolbar hides when you click elsewhere, type, scroll, or after 8 seconds. Nu
 ## How it works
 
 - Replace: sends the selection to the Claude Messages API with your prompt and pastes the result over it (⌘C fallback uses the app's Edit ▸ Copy menu for apps such as Telegram for macOS that ignore synthetic ⌘C). If you switch windows while waiting, nothing is pasted — the result is left on the clipboard.
-- Selection: read through the macOS Accessibility API when possible (which also tells whether the text is editable), otherwise via a silent copy with the clipboard restored. In apps that don't report editability, all buttons are shown and the result is also left on the clipboard as a backup.
+- Selection: whether it's editable is decided by the accessibility element under the mouse (input box vs. message text). The text itself is read through the Accessibility API when possible, otherwise via a silent copy with the clipboard restored.
+- Speed: Sonnet 5.x is called with `thinking: between_tools` (no thinking step for plain translation), responses are streamed via curl, and requests are prefetched on hover. Set `thinking = "default"` in `config.lua` to turn this off.
 
 ## License
 
