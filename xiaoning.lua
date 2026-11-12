@@ -1,14 +1,9 @@
--- Claude 翻译助手（Hammerspoon）
+-- 小宁翻译 · XiaoNing Translate (Hammerspoon)
 --
--- 用鼠标选中文字 → 旁边弹出工具条：
---   翻译        弹窗显示中文（选的是中文则翻成英文）
---   译成英文     翻译并润色成英文，直接替换选中的文字（⌘Z 撤销）
---   译成〔上次〕  用上次在「其他语言」里选的语言
---   其他语言     弹出语言列表
---   润色        只润色，不换语言
---   复制
--- 选中的是不能编辑的文字（比如客户发来的消息）时，只显示「翻译」「复制」。
--- 快捷键：⌃⌥S 截图翻译；⌃⌥T 开关划词工具条。
+-- 用鼠标选中文字 → 旁边弹出工具条 → 点按钮执行
+-- 客户消息（只读）→ 翻译 · 复制 · 更多
+-- 自己输入框（可编辑）→ 翻译 · 译成英文 · 译成〔上次语言〕· 其他语言 · 润色 · 复制
+-- ⌃⌥S 截图翻译；⌃⌥T 开关工具条
 
 local M = {}
 
@@ -97,11 +92,18 @@ local function short(s)
 end
 
 
+local ALERT_STYLE = {
+  textSize = 14,
+  radius = 10,
+  fillColor = { red = 0.86, green = 0.47, blue = 0.34, alpha = 0.93 },
+  textColor = { white = 1 },
+  strokeColor = { alpha = 0 },
+  atScreenEdge = 0,
+}
 local function showAlert(text, seconds)
   if alertId then hs.alert.closeSpecific(alertId) end
-  alertId = hs.alert.show(text, { textSize = 15, radius = 8 }, hs.screen.mainScreen(), seconds or 2)
+  alertId = hs.alert.show(text, ALERT_STYLE, hs.screen.mainScreen(), seconds or 2)
 end
-
 local function closeAlert()
   if alertId then hs.alert.closeSpecific(alertId) alertId = nil end
 end
@@ -254,6 +256,7 @@ local function streamClaude(system, content, onDelta, onDone, model)
   local function finish(result, err)
     if finished then return end
     finished = true
+    log("  stream done ok=" .. tostring(result ~= nil) .. " err=" .. tostring(err))
     onDone(result, err)
   end
   local bodyFile = os.tmpname()
@@ -302,6 +305,7 @@ local function streamClaude(system, content, onDelta, onDone, model)
   liveTasks[task] = true
   task:start()
   return { cancel = function()
+    log("  stream cancelled")
     finished = true
     if task:isRunning() then task:terminate() end
     liveTasks[task] = nil
@@ -347,11 +351,26 @@ local function dropRequests(keepKey)
   end
 end
 
--- ---------------------------------------------------------------- popup
+-- ---------------------------------------------------------------- popup (小宁翻译 card)
+
+local APP_NAME = "小宁翻译"
+
+-- Claude-style palette
+local function palette()
+  if hs.host.interfaceStyle() == "Dark" then
+    return { bg = "#262624", fg = "#FAF9F5", muted = "#A6A39A", border = "#3D3D3A",
+             hover = "#30302E", accent = "#D97757", accentSoft = "rgba(217,119,87,.16)" }
+  end
+  return { bg = "#FAF9F5", fg = "#141413", muted = "#87867F", border = "#E8E6DC",
+           hover = "#F0EEE6", accent = "#C96442", accentSoft = "rgba(201,100,66,.10)" }
+end
 
 local popup = nil
 local popupText = ""
+local popupPinned = false
 local escKey = nil
+local POPUP_W = 440
+local MARGIN = 14 -- transparent margin around the card so its shadow is visible
 
 local function htmlEscape(s)
   return (s:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"))
@@ -360,72 +379,164 @@ end
 local function closePopup()
   if popup then popup:delete() popup = nil end
   if escKey then escKey:delete() escKey = nil end
+  popupPinned = false
 end
 
-local function popupHTML(title, body, isText)
-  local dark = hs.host.interfaceStyle() == "Dark"
-  local bg, fg, sub, btn = "#ffffff", "#1d1d1f", "#86868b", "#f2f2f7"
-  if dark then bg, fg, sub, btn = "#2c2c2e", "#f5f5f7", "#98989d", "#3a3a3c" end
-  local copyBtn = isText and
-    '<button onclick="window.webkit.messageHandlers.cr.postMessage(\'copy\')">复制</button>' or ""
+local ICON_PIN = [[<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>]]
+local ICON_COPY = [[<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>]]
+local ICON_CLOSE = [[<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>]]
+local ICON_SPARK = [[<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9z"/></svg>]]
+
+local function popupHTML()
+  local c = palette()
   return [[<!doctype html><html><head><meta charset="utf-8"><style>
-  html,body{margin:0;background:]] .. bg .. [[;color:]] .. fg .. [[;
-    font:14px/1.6 -apple-system,"PingFang SC",sans-serif;}
-  .bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;
-    color:]] .. sub .. [[;font-size:12px;border-bottom:1px solid ]] .. btn .. [[;-webkit-user-select:none}
-  .bar span{flex:1}
-  button{background:]] .. btn .. [[;color:]] .. fg .. [[;border:0;border-radius:6px;padding:3px 10px;
-    margin-left:6px;font-size:12px;cursor:pointer}
-  .body{padding:10px 14px 14px;white-space:pre-wrap;word-wrap:break-word;-webkit-user-select:text}
-  </style><script>function setBody(t){document.getElementById("b").textContent=t}
-  function setTitle(t){document.getElementById("t").textContent=t}</script></head><body>
-  <div class="bar"><span id="t">]] .. htmlEscape(title) .. [[</span>]] .. copyBtn ..
-  [[<button onclick="window.webkit.messageHandlers.cr.postMessage('close')">×</button></div>
-  <div class="body" id="b">]] .. htmlEscape(body) .. [[</div></body></html>]]
+  html,body{margin:0;background:transparent;-webkit-user-select:none;cursor:default}
+  .card{margin:]] .. MARGIN .. [[px;background:]] .. c.bg .. [[;color:]] .. c.fg .. [[;
+    border:1px solid ]] .. c.border .. [[;border-radius:14px;overflow:hidden;
+    box-shadow:0 8px 28px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
+    font:14px/1.65 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+  .head{display:flex;align-items:center;gap:6px;padding:9px 10px 9px 14px;cursor:grab}
+  .logo{color:]] .. c.accent .. [[;display:flex}
+  .name{font-weight:600;font-size:13px;letter-spacing:.2px}
+  .status{font-size:12px;color:]] .. c.muted .. [[;margin-left:4px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:]] .. c.accent .. [[;
+    margin-right:6px;vertical-align:middle;animation:p 1s ease-in-out infinite}
+  @keyframes p{0%,100%{opacity:.25}50%{opacity:1}}
+  .btn{width:28px;height:28px;border-radius:8px;border:0;background:transparent;color:]] .. c.muted .. [[;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+  .btn:hover{background:]] .. c.hover .. [[;color:]] .. c.fg .. [[}
+  .btn.on{color:]] .. c.accent .. [[;background:]] .. c.accentSoft .. [[}
+  .src{margin:0 14px;padding:8px 10px;border-radius:8px;background:]] .. c.hover .. [[;color:]] .. c.muted .. [[;
+    font-size:12.5px;line-height:1.5;max-height:58px;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;
+    -webkit-user-select:text;cursor:text}
+  .src:empty{display:none}
+  .body{padding:10px 16px 16px;white-space:pre-wrap;word-wrap:break-word;-webkit-user-select:text;cursor:text;
+    max-height:420px;overflow-y:auto}
+  .err{color:]] .. c.accent .. [[}
+  </style></head><body><div class="card" id="card">
+  <div class="head" id="head">
+    <span class="logo">]] .. ICON_SPARK .. [[</span><span class="name">]] .. APP_NAME .. [[</span>
+    <span class="status" id="status"></span>
+    <button class="btn" id="pin" title="固定：点别处不关闭，下次翻译直接显示在这里">]] .. ICON_PIN .. [[</button>
+    <button class="btn" id="copy" title="复制译文">]] .. ICON_COPY .. [[</button>
+    <button class="btn" id="close" title="关闭">]] .. ICON_CLOSE .. [[</button>
+  </div>
+  <div class="src" id="src"></div>
+  <div class="body" id="b"></div>
+  </div><script>
+  const post=m=>window.webkit.messageHandlers.cr.postMessage(m);
+  document.getElementById('pin').onclick=()=>post('pin');
+  document.getElementById('copy').onclick=()=>post('copy');
+  document.getElementById('close').onclick=()=>post('close');
+  document.getElementById('head').addEventListener('mousedown',e=>{ if(!e.target.closest('.btn')) post('drag'); });
+  function size(){ post('h:'+Math.ceil(document.getElementById('card').getBoundingClientRect().height)); }
+  function setBody(t){ const b=document.getElementById('b'); b.classList.remove('err'); b.textContent=t; size(); }
+  function setErr(t){ const b=document.getElementById('b'); b.classList.add('err'); b.textContent=t; size(); }
+  function setSrc(t){ document.getElementById('src').textContent=t; size(); }
+  function setStatus(t,busy){ document.getElementById('status').innerHTML=(busy?'<span class="dot"></span>':'')+t; }
+  function setPinned(on){ document.getElementById('pin').classList.toggle('on',on); }
+  size();
+  </script></body></html>]]
 end
 
-local function showPopup(title, body, isText)
-  local text = body
-  if not popup then
-    local uc = hs.webview.usercontent.new("cr")
-    uc:setCallback(function(msg)
-      if msg.body == "copy" and popup then
-        hs.pasteboard.setContents(popupText)
-        showAlert("已复制", 1)
-      elseif msg.body == "close" then
-        closePopup()
-      end
-    end)
-    local mouse = hs.mouse.absolutePosition()
-    local frame = hs.mouse.getCurrentScreen():frame()
-    local w, h = 440, 260
-    local x = math.min(math.max(mouse.x + 12, frame.x + 10), frame.x + frame.w - w - 10)
-    local y = math.min(math.max(mouse.y + 18, frame.y + 10), frame.y + frame.h - h - 10)
-    popup = hs.webview.new({ x = x, y = y, w = w, h = h }, { developerExtrasEnabled = false }, uc)
-      :windowStyle({ "titled", "closable", "resizable", "utility", "nonactivating" })
-      :level(hs.drawing.windowLevels.floating)
-      :allowTextEntry(true)
-      :shadow(true)
-      :closeOnEscape(true)
-      :windowTitle("Claude 翻译")
-      :deleteOnClose(true)
-      :windowCallback(function(action)
-        if action == "closing" then
-          popup = nil
-          if escKey then escKey:delete() escKey = nil end
-        end
-      end)
+local function js(fn, ...)
+  if not popup then return end
+  local args = {}
+  for i, v in ipairs({ ... }) do args[i] = hs.json.encode({ v }) .. "[0]" end
+  popup:evaluateJavaScript(fn .. "(" .. table.concat(args, ",") .. ")")
+end
+
+-- dragging the card by its header
+local dragging = nil
+local function startDrag()
+  if not popup then return end
+  local m, f = hs.mouse.absolutePosition(), popup:frame()
+  dragging = { dx = m.x - f.x, dy = m.y - f.y }
+end
+
+local function setPinned(on)
+  popupPinned = on
+  js("setPinned", on)
+  if on then
+    if escKey then escKey:delete() escKey = nil end -- don't steal Esc from other apps while pinned
+  elseif not escKey then
     escKey = hs.hotkey.bind({}, "escape", closePopup)
   end
-  popupText = text
-  popup:html(popupHTML(title, body, isText))
+end
+
+local popupReady = false
+local pendingCalls = {}
+
+local function ensurePopup()
+  if popup then return end
+  popupReady = false
+  pendingCalls = {}
+  local uc = hs.webview.usercontent.new("cr")
+  uc:setCallback(function(msg)
+    local b = msg.body
+    if b == "copy" then
+      if popupText ~= "" then hs.pasteboard.setContents(popupText) showAlert("已复制", 1) end
+    elseif b == "close" then closePopup()
+    elseif b == "pin" then setPinned(not popupPinned)
+    elseif b == "drag" then startDrag()
+    elseif type(b) == "string" and b:sub(1, 2) == "h:" and popup then
+      local h = tonumber(b:sub(3)) or 200
+      local f = popup:frame()
+      f.h = math.min(h + MARGIN * 2, 560)
+      popup:frame(f)
+      if not popupReady then
+        popupReady = true
+        for _, call in ipairs(pendingCalls) do call() end
+        pendingCalls = {}
+      end
+    end
+  end)
+  local mouse = hs.mouse.absolutePosition()
+  local screen = hs.mouse.getCurrentScreen():frame()
+  local w, h = POPUP_W + MARGIN * 2, 200
+  local x = math.min(math.max(mouse.x - MARGIN, screen.x + 4), screen.x + screen.w - w - 4)
+  local y = math.min(math.max(mouse.y + 16 - MARGIN, screen.y + 4), screen.y + screen.h - 300)
+  popup = hs.webview.new({ x = x, y = y, w = w, h = h }, { developerExtrasEnabled = false }, uc)
+    :windowStyle({ "borderless", "nonactivating" })
+    :transparent(true)
+    :level(hs.drawing.windowLevels.floating)
+    :allowTextEntry(true)
+    :shadow(false)
+    :deleteOnClose(true)
+    :windowCallback(function(action)
+      if action == "closing" then
+        popup = nil
+        if escKey then escKey:delete() escKey = nil end
+      end
+    end)
+  popup:html(popupHTML())
+  popup:show()
+  setPinned(false)
+end
+
+-- run fn once the page has loaded (first size message)
+local function whenReady(fn)
+  if popupReady then fn() else table.insert(pendingCalls, fn) end
+end
+
+-- status: text in the header; busy: show the pulsing dot
+local function showPopup(status, body, isText, busy, source)
+  ensurePopup()
+  popupText = isText and body or ""
+  whenReady(function()
+    js("setStatus", status or "", busy and true or false)
+    if source ~= nil then js("setSrc", source) end
+    if isText or busy then js("setBody", body or "") else js("setErr", body or "") end
+    js("setPinned", popupPinned)
+  end)
   popup:show()
 end
 
 -- Update the popup body in place while text streams in (no reload, no flicker).
 local function popupStream(text)
   if not popup then return end
-  popup:evaluateJavaScript("setBody(" .. hs.json.encode({ text }) .. "[0])")
+  popupText = text
+  whenReady(function() js("setBody", text) end)
 end
 
 -- ---------------------------------------------------------------- write: translate & replace
@@ -484,6 +595,7 @@ local function run(targetLanguage, preset)
   if not r.done then showAlert("⏳ " .. label .. "…", TIMEOUT) end
 
   listen(r, nil, function(result, err)
+    log("run got result=" .. short(result) .. " err=" .. tostring(err))
     busy = false
     requests[key] = nil
     closeAlert()
@@ -494,7 +606,7 @@ local function run(targetLanguage, preset)
     end
     -- selection that can't be edited (e.g. a customer's message): just show the result
     if preset and preset.editable == false then
-      showPopup("结果", result, true)
+      showPopup("结果", result, true, false)
       return
     end
     local front = hs.application.frontmostApplication()
@@ -526,13 +638,23 @@ local function readText(text)
   local mySeq = readSeq
   local key = readKey(text)
   local r = request(key, readFile(READ_PROMPT_FILE), text, MODEL_READ)
-  showPopup(r.done and "译文" or "翻译中…", r.text, false)
+  showPopup(r.done and "译文" or "翻译中…", r.text, r.done, not r.done, nil)
   listen(r,
-    function(t) if popup and mySeq == readSeq then popupStream(t) end end,
+    function(t)
+      if popup and mySeq == readSeq then
+        popupStream(t)
+        js("setStatus", "翻译中…", true)
+      end
+    end,
     function(result, err)
       requests[key] = nil
       if not popup or mySeq ~= readSeq then return end
-      if result then showPopup("译文", result, true) else showPopup("出错了", err or "出错了", false) end
+      if result then
+        showPopup("译文", result, true, false, nil)
+      else
+        js("setStatus", "出错了", false)
+        js("setErr", err or "出错了")
+      end
     end)
 end
 
@@ -652,6 +774,7 @@ end
 
 -- Start the request as soon as the mouse is over a button, so clicking feels instant.
 local function prefetch(id, sel)
+  log("prefetch " .. tostring(id))
   if #sel.text > 8000 and id ~= "read" then return end
   if id == "read" then request(readKey(sel.text), readFile(READ_PROMPT_FILE), sel.text, MODEL_READ)
   elseif id == "en" then request(writeKey("English", sel.text), writeSystem("English"), sel.text)
@@ -690,13 +813,18 @@ showToolbar = function(sel, pos)
   if sel.editable == false then table.insert(buttons, { id = "expand", label = "更多" }) end
 
   local dark = hs.host.interfaceStyle() == "Dark"
-  local bg = dark and { red = 0.17, green = 0.17, blue = 0.18, alpha = 0.97 } or { red = 0.97, green = 0.97, blue = 0.97, alpha = 0.97 }
-  local fg = dark and { white = 0.95 } or { white = 0.12 }
-  local hover = dark and { white = 1, alpha = 0.12 } or { white = 0, alpha = 0.07 }
-  local sep = dark and { white = 1, alpha = 0.15 } or { white = 0, alpha = 0.12 }
-  local accent = { red = 0.85, green = 0.47, blue = 0.34, alpha = 1 }
+  local function hex(h, a)
+    return { red = tonumber(h:sub(2, 3), 16) / 255, green = tonumber(h:sub(4, 5), 16) / 255,
+             blue = tonumber(h:sub(6, 7), 16) / 255, alpha = a or 1 }
+  end
+  local bg = dark and hex("#262624", 0.98) or hex("#FAF9F5", 0.98)
+  local border = dark and hex("#3D3D3A") or hex("#E8E6DC")
+  local fg = dark and hex("#FAF9F5") or hex("#3D3929")
+  local hover = dark and hex("#30302E") or hex("#F0EEE6")
+  local sep = dark and hex("#3D3D3A") or hex("#E8E6DC")
+  local accent = dark and hex("#D97757") or hex("#C96442")
 
-  local fontSize, padX, h, gap = 13, 11, 32, 2
+  local fontSize, padX, h, gap = 13, 11, 34, 2
   local widths, total = {}, 6
   for i, b in ipairs(buttons) do
     local size = hs.drawing.getTextDrawingSize(b.label, { size = fontSize })
@@ -714,9 +842,9 @@ showToolbar = function(sel, pos)
   toolbar:level(hs.canvas.windowLevels.popUpMenu)
   toolbar:clickActivating(false)
   toolbar:appendElements({
-    type = "rectangle", action = "fill", fillColor = bg, id = "bg",
-    roundedRectRadii = { xRadius = 9, yRadius = 9 },
-    withShadow = true, shadow = { blurRadius = 8, color = { alpha = 0.25 }, offset = { h = -2, w = 0 } },
+    type = "rectangle", action = "strokeAndFill", fillColor = bg, strokeColor = border, strokeWidth = 1, id = "bg",
+    roundedRectRadii = { xRadius = 10, yRadius = 10 },
+    withShadow = true, shadow = { blurRadius = 10, color = { alpha = 0.18 }, offset = { h = -3, w = 0 } },
   })
   local cx = 5
   local hitIndex = {}
@@ -781,6 +909,27 @@ end
 
 local function startAutoIcon()
   if mouseTap then mouseTap:stop() end
+  -- drag handle for the popup: update position while left button is held
+  local dragTap
+  dragTap = hs.eventtap.new({ hs.eventtap.event.types.leftMouseDragged, hs.eventtap.event.types.leftMouseUp },
+    function(ev)
+      if not dragging or not popup then dragTap:stop() dragging = nil return false end
+      if ev:getType() == hs.eventtap.event.types.leftMouseUp then
+        dragTap:stop(); dragging = nil
+      else
+        local m = hs.mouse.absolutePosition()
+        local f = popup:frame()
+        f.x = m.x - dragging.dx; f.y = m.y - dragging.dy
+        popup:frame(f)
+      end
+      return false
+    end)
+  local origStartDrag = startDrag
+  startDrag = function()
+    origStartDrag()
+    dragTap:start()
+  end
+
   mouseTap = hs.eventtap.new(
     { hs.eventtap.event.types.leftMouseDown, hs.eventtap.event.types.leftMouseUp,
       hs.eventtap.event.types.keyDown, hs.eventtap.event.types.scrollWheel },
@@ -790,7 +939,7 @@ local function startAutoIcon()
         local p = hs.mouse.absolutePosition()
         mouseDownPos = p
         if toolbar and not pointIn(p, toolbar:frame()) then hideToolbar() end
-        if popup and not pointIn(p, popup:frame()) then closePopup() end
+        if popup and not popupPinned and not pointIn(p, popup:frame()) then closePopup() end
       elseif t == hs.eventtap.event.types.leftMouseUp then
         if toolbarEnabled then onMouseUp(e) end
       elseif t == hs.eventtap.event.types.keyDown or t == hs.eventtap.event.types.scrollWheel then
@@ -805,7 +954,7 @@ local function toggleAutoIcon()
   toolbarEnabled = not toolbarEnabled
   hs.settings.set("claudeReplace.autoIcon", toolbarEnabled)
   if not toolbarEnabled then hideToolbar() end
-  showAlert(toolbarEnabled and "划词工具条：已开启" or "划词工具条：已关闭", 1.5)
+  showAlert(toolbarEnabled and "小宁翻译：划词工具条已开启" or "小宁翻译：划词工具条已关闭", 1.5)
 end
 
 local function readScreenshot()
@@ -817,14 +966,15 @@ local function readScreenshot()
     f:close()
     os.remove(path)
     if not data or #data == 0 then return end
-    showPopup("识别翻译中…", "（截图已发送给 Claude）", false)
+    showPopup("识别翻译中…", "（截图已发送给 Claude）", false, true, nil)
     local content = {
       { type = "image", source = { type = "base64", media_type = "image/png", data = hs.base64.encode(data) } },
       { type = "text", text = "Translate the text in this screenshot." },
     }
     callClaude(readFile(READ_PROMPT_FILE), content, function(result, err)
       if not popup then return end
-      if result then showPopup("截图译文", result, true) else showPopup("出错了", err, false) end
+      if result then showPopup("截图译文", result, true, false, nil)
+      else js("setStatus","出错了",false); js("setErr", err or "出错了") end
     end)
   end, { "-i", "-x", path }):start()
 end
@@ -844,7 +994,7 @@ chooseLanguage = function(sel)
     table.insert(choices, { text = LANG_ZH[lang] .. "  " .. lang, lang = lang })
   end
   chooser:choices(choices)
-  chooser:placeholderText("翻译润色成哪种语言？（可输入搜索）")
+  chooser:placeholderText("小宁翻译 · 翻译润色成哪种语言？（可输入搜索）")
   activeChooser = chooser
   chooser:show()
 end
@@ -856,6 +1006,9 @@ function M.start()
   hs.hotkey.bind({ "ctrl", "alt" }, "S", readScreenshot)
   hs.hotkey.bind({ "ctrl", "alt" }, "T", toggleAutoIcon)
   startAutoIcon()
+  if not authToken() then
+    hs.alert.show("小宁翻译还没有 API Key\n请打开 " .. DIR .. "/config.lua 填写 apiKey\n然后点菜单栏小锤子 → Reload Config", ALERT_STYLE, hs.screen.mainScreen(), 12)
+  end
 end
 
 -- keep the event tap alive if macOS disables it
@@ -873,7 +1026,7 @@ M.paths = function() return { dir = DIR, write = PROMPT_FILE, read = READ_PROMPT
 
 M.toolbarButtons = function() return toolbar and toolbarButtons or {} end
 
-M._test = { request = function(...) return request(...) end, readKey = function(...) return readKey(...) end, writeKey = function(...) return writeKey(...) end, writeSystem = function(...) return writeSystem(...) end, readPrompt = function() return readFile(READ_PROMPT_FILE) end, editableAt = function(p) return editableAt(p) end, listen = function(...) return listen(...) end }
+M._test = { readText = function(t) return readText(t) end, setPinned = function(v) return setPinned(v) end, pinned = function() return popupPinned end, request = function(...) return request(...) end, readKey = function(...) return readKey(...) end, writeKey = function(...) return writeKey(...) end, writeSystem = function(...) return writeSystem(...) end, readPrompt = function() return readFile(READ_PROMPT_FILE) end, editableAt = function(p) return editableAt(p) end, listen = function(...) return listen(...) end }
 
 M.debugState = function()
   return { icon = toolbar ~= nil, iconFrame = toolbar and toolbar:frame(), iconText = toolbarSel and toolbarSel.text, editable = toolbarSel and toolbarSel.editable, popup = popup ~= nil, popupFrame = popup and popup:frame(), popupVisible = popup and popup:isVisible(), tap = mouseTap and mouseTap:isEnabled(), auto = toolbarEnabled }

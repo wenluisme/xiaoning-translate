@@ -1,5 +1,5 @@
--- Add these lines to ~/.hammerspoon/init.lua (change the path to where you cloned the repo).
+-- install.sh adds these lines to ~/.hammerspoon/init.lua for you.
 require("hs.ipc")
-package.path = os.getenv("HOME") .. "/claude-translator-mac/?.lua;" .. package.path
-claudeReplace = require("claude_replace")
-claudeReplace.start()
+package.path = os.getenv("HOME") .. "/xiaoning-translate/?.lua;" .. package.path
+xiaoning = require("xiaoning")
+xiaoning.start()
