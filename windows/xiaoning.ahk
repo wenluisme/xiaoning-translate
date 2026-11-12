@@ -21,6 +21,7 @@ global ROOT := DirExist(A_ScriptDir "\..\prompts") ? A_ScriptDir "\.." : A_Scrip
 global CFG_FILE := ROOT "\config.ini"
 global TMP := A_Temp "\xiaoning"
 global REPO_RAW := "https://raw.githubusercontent.com/wenluisme/xiaoning-translate/main/"
+global REPO_URL := "https://github.com/wenluisme/xiaoning-translate"
 global READ_FORMAT := "
 (
 Reply in exactly this format (plain text, no Markdown, no ** or #):
@@ -436,6 +437,8 @@ MonitorFromPoint(x, y, &l, &t, &r, &b) {
     if (exe = "explorer.exe" || cls = "Shell_TrayWnd" || cls = "Progman" || cls = "WorkerW")
       return
   }
+  if IsCaptureOverlay(win)   ; a screenshot tool (DingTalk, WeChat, Snipaste...): Ctrl+C there would finish the capture
+    return
   upX := x, upY := y
   SetTimer(CheckSelection, -150)
 }
@@ -444,6 +447,25 @@ MonitorFromPoint(x, y, &l, &t, &r, &b) {
 ~WheelDown:: {
   if tbGui
     HideToolbar()
+}
+
+; Screenshot tools draw a borderless, always-on-top window over the whole screen while you drag a box.
+IsCaptureOverlay(win) {
+  try {
+    if RegExMatch(WinGetProcessName("ahk_id " win), "i)^(Snipaste|PixPin|ShareX|SnippingTool|ScreenClippingHost|ScreenSketch|Greenshot|FSCapture|FastStone.*|Lightshot|ScreenShot|SnapShot|Feishu.*Screenshot.*)\.exe$")
+      return true
+    if !(WinGetExStyle("ahk_id " win) & 0x8)        ; WS_EX_TOPMOST
+      return false
+    if (WinGetStyle("ahk_id " win) & 0xC00000)      ; has a title bar
+      return false
+    WinGetPos(&x, &y, &w, &h, "ahk_id " win)
+    loop MonitorGetCount() {
+      MonitorGet(A_Index, &l, &t, &r, &b)
+      if (x <= l && y <= t && x + w >= r && y + h >= b)
+        return true
+    }
+  }
+  return false
 }
 
 OverGui(g) {
@@ -947,9 +969,12 @@ ScreenshotTranslate() {
 ; ============================================================ tray
 
 SetupTray() {
-  A_IconTip := APP_NAME " · XiaoNing Translate"
+  ver := LocalVersion()
+  A_IconTip := APP_NAME " · XiaoNing Translate" (ver != "" ? " " ver : "")
   m := A_TrayMenu
   m.Delete()
+  m.Add(APP_NAME " 版本 " (ver != "" ? ver : "?"), (*) => Run(REPO_URL "/releases"))
+  m.Add()
   m.Add("打开配置文件", (*) => Run('notepad.exe "' CFG_FILE '"'))
   m.Add("打开提示词文件夹", (*) => Run('explorer.exe "' ROOT '\prompts"'))
   m.Add("开关划词工具条（Ctrl+Alt+T）", (*) => ToggleToolbar())
@@ -975,7 +1000,7 @@ StartUpdateChecks() {
   if (cur != "" && prev != cur) {
     CfgWrite("state", "version", cur)
     if (prev != "")
-      Toast("小宁翻译已更新到 " cur, 4000)
+      Toast("小宁翻译已更新到 " cur "（右键托盘图标 → 版本，可看更新内容）", 6000)
   }
   if (EnvGet("XN_CI") != "" || DirExist(ROOT "\.git"))
     return
@@ -1048,6 +1073,15 @@ SelfTest(mockUrl) {
   r0 := WrapText(ReadKey("Who are you?"), "Who are you?")
   check("wrap read format", InStr(r0, "【建议回复】") > 0 && InStr(r0, "<text>`nWho are you?`n</text>") > 0, true)
   check("wrap other", WrapText("shot:1", "x"), "x")
+  ov := Gui("+AlwaysOnTop -Caption +ToolWindow")
+  MonitorGet(MonitorGetPrimary(), &ml, &mt, &mr, &mb)
+  ov.Show("NA x" ml " y" mt " w" (mr - ml) " h" (mb - mt))
+  check("overlay detected", IsCaptureOverlay(ov.Hwnd), true)
+  ov.Destroy()
+  nw := Gui("+Resize", "normal window")
+  nw.Show("NA w400 h300")
+  check("normal window not overlay", IsCaptureOverlay(nw.Hwnd), false)
+  nw.Destroy()
   check("version file", RegExMatch(LocalVersion(), "^\d[\w.\-]*$") > 0, true)
 
   ; end-to-end streaming against a local mock server

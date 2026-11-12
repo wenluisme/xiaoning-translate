@@ -1157,18 +1157,37 @@ end
 
 M.checkUpdate = function() checkUpdate(true) end
 
+-- menu-bar item: shows the version, check for updates, toolbar on/off
+local function setupMenu()
+  if M.menu then M.menu:delete() end
+  M.menu = hs.menubar.new()
+  if not M.menu then return end
+  M.menu:setTitle("译")
+  M.menu:setTooltip("小宁翻译 XiaoNing Translate")
+  M.menu:setMenu(function()
+    return {
+      { title = "小宁翻译 版本 " .. (localVersion() or "?"), fn = function() hs.urlevent.openURL("https://github.com/wenluisme/xiaoning-translate/releases") end },
+      { title = "-" },
+      { title = "检查更新", fn = function() checkUpdate(true) end },
+      { title = "划词工具条（⌃⌥T）", checked = toolbarEnabled, fn = toggleAutoIcon },
+      { title = "截图翻译（⌃⌥S）", fn = readScreenshot },
+    }
+  end)
+end
+
 function M.start()
   -- load extensions up front so nothing gets lazily loaded inside event callbacks
   local _ = { hs.canvas, hs.axuielement, hs.mouse, hs.eventtap, hs.window, hs.webview, hs.webview.usercontent, hs.drawing, hs.styledtext, hs.settings, hs.alert, hs.timer, hs.hotkey,
-    hs.pasteboard, hs.http, hs.json, hs.chooser, hs.task, hs.base64, hs.host, hs.screen, hs.application }
+    hs.pasteboard, hs.http, hs.json, hs.chooser, hs.task, hs.base64, hs.host, hs.screen, hs.application, hs.menubar, hs.urlevent }
   hs.hotkey.bind({ "ctrl", "alt" }, "S", readScreenshot)
   hs.hotkey.bind({ "ctrl", "alt" }, "T", toggleAutoIcon)
   startAutoIcon()
   local updated = hs.settings.get("xiaoning.updatedTo")
   if updated then
     hs.settings.clear("xiaoning.updatedTo")
-    hs.alert.show("小宁翻译已更新到 " .. updated, ALERT_STYLE, hs.screen.mainScreen(), 4)
+    hs.alert.show("小宁翻译已更新到 " .. updated .. "\n点菜单栏「译」→ 版本，可看更新内容", ALERT_STYLE, hs.screen.mainScreen(), 6)
   end
+  setupMenu()
   M.updateTimers = { hs.timer.doAfter(60, function() checkUpdate(false) end), hs.timer.doEvery(24 * 3600, function() checkUpdate(false) end) }
   if not authToken() then
     hs.alert.show("小宁翻译还没有 API Key\n请打开 " .. DIR .. "/config.lua 填写 apiKey\n然后点菜单栏小锤子 → Reload Config", ALERT_STYLE, hs.screen.mainScreen(), 12)

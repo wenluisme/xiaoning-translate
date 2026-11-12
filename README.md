@@ -31,7 +31,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
 
 - Change the key / gateway: right-click the tray icon → **打开配置文件** (open config file), save, then right-click → **重新加载** (reload).
 - Custom prompts: right-click the tray icon → **打开提示词文件夹** (open prompts folder), put `write.txt` / `read.txt` there, then reload.
-- Updates: installed automatically — once a day it checks GitHub and quietly installs a new version (your key and prompts are kept). To check now: right-click the tray icon → **检查更新** (check for updates).
+- Updates: installed automatically — once a day it checks GitHub and quietly installs a new version (your key and prompts are kept). To check now: right-click the tray icon → **检查更新** (check for updates). The first item in the tray menu shows the installed version; click it to see what changed ([Releases](https://github.com/wenluisme/xiaoning-translate/releases)).
 - Turn the toolbar on/off: `Ctrl+Alt+T`.
 
 ## Install on macOS (about 2 minutes)
@@ -49,7 +49,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
 4. Click the hammer icon in the menu bar → **Reload Config**.
 
 - Change the key: edit `apiKey` in `~/xiaoning-translate/config.lua`, then hammer icon → Reload Config.
-- Updates: installed automatically — once a day it checks GitHub and quietly installs a new version (your key and prompts are kept). You can also run the install command again.
+- Updates: installed automatically — once a day it checks GitHub and quietly installs a new version (your key and prompts are kept). The **译** item in the menu bar shows the installed version and has **检查更新** (check for updates); see what changed under [Releases](https://github.com/wenluisme/xiaoning-translate/releases).
 - Turn the toolbar on/off: `⌃⌥T`.
 
 ## Toolbar buttons
@@ -74,6 +74,7 @@ Copy `prompts/write.example.txt` and `prompts/read.example.txt` to `prompts/writ
 
 ## Troubleshooting
 
+- **Screenshot tools**: dragging a box in a screenshot tool (DingTalk, WeChat, Snipaste…) is ignored, so it no longer ends the capture.
 - **No toolbar after selecting text**: macOS — make sure Hammerspoon is enabled under Accessibility, then Reload Config. Windows — make sure the tray icon is there; right-click → reload. Also check the toolbar isn't switched off (`⌃⌥T` / `Ctrl+Alt+T`).
 - **"出错了" (error) or timeout**: check your API key and network; if you use a gateway, check the `endpoint` in your config.
 - **Screenshot only captures the desktop (macOS)**: enable Hammerspoon under Screen Recording.
