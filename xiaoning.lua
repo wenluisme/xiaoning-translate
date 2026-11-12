@@ -721,32 +721,51 @@ end
 
 -- Returns the selected text and whether it can be edited (true / false).
 -- Reads via Accessibility when possible; otherwise a silent copy that restores the clipboard.
-local function selectedText(pos)
-  local editable = editableAt(pos)
+local function isEditableElement(el)
+  if not el then return false end
+  local role = el:attributeValue("AXRole")
+  if EDITABLE_ROLES[role] then return true end
+  local settable = false
+  pcall(function() settable = el:isAttributeSettable("AXValue") end)
+  return settable and role ~= "AXStaticText" and role ~= "AXWebArea"
+end
+
+local function inFrame(p, f, pad)
+  pad = pad or 0
+  return p and f and f.w and p.x >= f.x - pad and p.x <= f.x + f.w + pad and p.y >= f.y - pad and p.y <= f.y + f.h + pad
+end
+
+-- Returns the selected text and whether it sits in an input box (true / false).
+-- An input box counts if any of these hold:
+--   · the element under the mouse-up or mouse-down point is an input box
+--   · the keyboard-focused element is an input box and has this text selected
+--   · the keyboard-focused input box (±12px) contains the mouse-up or mouse-down point
+-- Chat composers are often one line tall, so the release point easily lands just outside them.
+local function selectedText(up, down)
+  local editable = editableAt(up) == true or (down and editableAt(down) == true) or false
   local ok, el = pcall(function()
     return hs.axuielement.systemWideElement():attributeValue("AXFocusedUIElement")
   end)
   local text = nil
+  local focusEditable = ok and el and isEditableElement(el)
   if ok and el then
     local ok2, sel = pcall(function() return el:attributeValue("AXSelectedText") end)
     if ok2 and type(sel) == "string" and not sel:match("^%s*$") then
       text = sel
-      if editable == nil then
-        local role = el:attributeValue("AXRole")
-        local settable = false
-        pcall(function() settable = el:isAttributeSettable("AXValue") end)
-        editable = EDITABLE_ROLES[role] or settable or false
-      end
+      if focusEditable then editable = true end
     end
+  end
+  if not editable and focusEditable then
+    local f = el:attributeValue("AXFrame")
+    if inFrame(up, f, 12) or inFrame(down, f, 12) then editable = true end
   end
   if not text then
     local saved
     text, saved = grabText(false)
     restoreClipboard(saved)
   end
-  log("  editable=" .. tostring(editable) .. " text=" .. short(text))
-  -- nothing tells us it's an input box → treat it as read-only (the 「更多」 button shows everything)
-  return text, editable == true
+  log("  editable=" .. tostring(editable) .. " focusEditable=" .. tostring(focusEditable) .. " text=" .. short(text))
+  return text, editable
 end
 
 local function worthShowing(text)
@@ -900,7 +919,7 @@ local function onMouseUp(e)
   log(string.format("mouseUp app=%s dragged=%s clicks=%d", bid, tostring(dragged), clicks))
   if EXCLUDED_APPS[bid] then return end
   later(0.15, function()
-    local text, editable = selectedText(up)
+    local text, editable = selectedText(up, down)
     local worth = worthShowing(text)
     log("  worth=" .. tostring(worth))
     if worth then showToolbar({ text = text, editable = editable, pos = up }, up) end
