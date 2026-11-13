@@ -87,13 +87,17 @@ $links = @(
 )
 foreach ($lnk in $links) {
   try {
-    $s = $ws.CreateShortcut($lnk)
+    # WScript.Shell can't save non-ASCII file names on non-Chinese Windows: save under an ASCII name, then rename
+    $tmpLnk = Join-Path (Split-Path $lnk) ('xn-' + [guid]::NewGuid().ToString('N') + '.lnk')
+    $s = $ws.CreateShortcut($tmpLnk)
     $s.TargetPath = $ahkExe
     $s.Arguments = '"' + $script + '"'
     $s.WorkingDirectory = Split-Path $script
     $s.Description = '小宁翻译 XiaoNing Translate'
     if (Test-Path $ico) { $s.IconLocation = "$ico,0" }
     $s.Save()
+    Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $tmpLnk -Destination $lnk -Force
   } catch { Write-Host "无法创建快捷方式 $lnk：$_" }
 }
 
