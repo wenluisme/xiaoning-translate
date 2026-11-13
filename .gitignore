@@ -8,3 +8,4 @@ prompts/*.txt
 
 # Windows local settings
 config.ini
+error.log

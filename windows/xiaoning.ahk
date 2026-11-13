@@ -73,9 +73,19 @@ global readSeq := 0
 ; ------------------------------------------------------------ CI: report runtime errors instead of showing a dialog
 if (EnvGet("XN_CI") != "" || (A_Args.Length && A_Args[1] = "--selftest"))
   OnError(CiError)
+else
+  OnError(UserError)
 CiError(e, mode) {
   FileAppend("RUNTIME ERROR: " e.Message " (" e.What ") line " e.Line "`n" e.Stack "`n", "**", "UTF-8")
   ExitApp(3)
+}
+
+; ------------------------------------------------------------ users: never show an error dialog or quit
+; A bug in one click should not take the whole tool down. Log it, show a short notice, keep running.
+UserError(e, mode) {
+  try FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") " v" LocalVersion() " " e.Message " (" e.What ") line " e.Line "`n" e.Stack "`n", ROOT "\error.log", "UTF-8")
+  try Toast("小宁翻译出了点小问题，已自动恢复，请再试一次", 3000)
+  return 1   ; handled: stop this action only, the app keeps running
 }
 
 ; ------------------------------------------------------------ self-test (used by CI)
@@ -572,7 +582,11 @@ HideToolbar(keepKey := "") {
   DropRequests(keepKey)
 }
 
+HasText(sel) => IsObject(sel) && sel.HasProp("text") && sel.text != ""
+
 ActionKey(id, sel) {
+  if !HasText(sel)
+    return ""
   switch id {
     case "read": return ReadKey(sel.text)
     case "en": return WriteKey("English", sel.text)
@@ -584,6 +598,8 @@ ActionKey(id, sel) {
 
 ; start the request while the mouse is over a button, so clicking feels instant
 Prefetch(id, sel) {
+  if !HasText(sel)
+    return
   if (id != "read" && StrLen(sel.text) > 8000)
     return
   switch id {
@@ -596,8 +612,8 @@ Prefetch(id, sel) {
 
 ToolbarClick(id, *) {
   sel := tbSel
-  if !sel
-    return
+  if !HasText(sel)
+    return HideToolbar()
   HideToolbar(ActionKey(id, sel))
   switch id {
     case "expand": ShowToolbar({ text: sel.text, editable: true, x: sel.x, y: sel.y })
@@ -620,7 +636,7 @@ OnMouseMove(wParam, lParam, msg, hwnd) {
   if (id = tbHover)
     return
   SetHover(id)
-  if tbSel
+  if HasText(tbSel)
     Prefetch(id, tbSel)
 }
 
@@ -1105,6 +1121,10 @@ SelfTest(mockUrl) {
   nw.Show("NA w400 h300")
   check("normal window not overlay", IsCaptureOverlay(nw.Hwnd), false)
   nw.Destroy()
+  check("hastext obj", HasText({ text: "hi" }), true)
+  check("hastext missing", HasText({ x: 1 }), false)
+  check("hastext string", HasText(""), false)
+  check("actionkey missing", ActionKey("en", { x: 1 }), "")
   check("version file", RegExMatch(LocalVersion(), "^\d[\w.\-]*$") > 0, true)
 
   ; end-to-end streaming against a local mock server

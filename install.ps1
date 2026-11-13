@@ -76,16 +76,26 @@ if (-not (Test-Path $cfg)) {
   Say "已有配置文件 $cfg，保留不动"
 }
 
-# 4. Start with Windows
+# 4. Shortcuts: start with Windows, plus Desktop and Start menu icons to (re)start it by hand
 $script = Join-Path $Dest 'windows\xiaoning.ahk'
-$lnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'XiaoNing Translate.lnk'
+$ico = Join-Path $Dest 'assets\icon\icon.ico'
 $ws = New-Object -ComObject WScript.Shell
-$s = $ws.CreateShortcut($lnk)
-$s.TargetPath = $ahkExe
-$s.Arguments = '"' + $script + '"'
-$s.WorkingDirectory = Split-Path $script
-$s.Description = '小宁翻译 XiaoNing Translate'
-$s.Save()
+$links = @(
+  (Join-Path ([Environment]::GetFolderPath('Startup')) 'XiaoNing Translate.lnk'),
+  (Join-Path ([Environment]::GetFolderPath('Desktop')) '小宁翻译.lnk'),
+  (Join-Path ([Environment]::GetFolderPath('Programs')) '小宁翻译.lnk')
+)
+foreach ($lnk in $links) {
+  try {
+    $s = $ws.CreateShortcut($lnk)
+    $s.TargetPath = $ahkExe
+    $s.Arguments = '"' + $script + '"'
+    $s.WorkingDirectory = Split-Path $script
+    $s.Description = '小宁翻译 XiaoNing Translate'
+    if (Test-Path $ico) { $s.IconLocation = "$ico,0" }
+    $s.Save()
+  } catch { Write-Host "无法创建快捷方式 $lnk：$_" }
+}
 
 # 5. (Re)start it
 Get-Process -Name AutoHotkey64 -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $ahkExe } | Stop-Process -Force
@@ -97,5 +107,6 @@ Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "安装完成！小宁翻译已在后台运行（右下角托盘区有橙色对话气泡图标），以后开机会自动启动。" -ForegroundColor Green
+Write-Host "如果它没在运行，双击桌面上的「小宁翻译」图标即可重新打开。"
 Write-Host "用法：用鼠标选中任意文字，旁边会出现工具条，点「翻译」「译成英文」等按钮即可；Ctrl+Alt+S 截图翻译。"
 Write-Host "业务术语提示词（write.txt / read.txt）放到：$Dest\prompts\ ，然后右键托盘图标 → 重新加载。"

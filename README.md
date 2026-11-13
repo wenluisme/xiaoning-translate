@@ -26,7 +26,7 @@ Requires Windows 10 (1803 or later) or Windows 11.
    irm https://raw.githubusercontent.com/wenluisme/xiaoning-translate/main/install.ps1 | iex
    ```
 
-   It downloads XiaoNing Translate and the free [AutoHotkey](https://www.autohotkey.com) runtime (no admin rights needed), asks for your API key, and sets it to start with Windows.
+   It downloads XiaoNing Translate and the free [AutoHotkey](https://www.autohotkey.com) runtime (no admin rights needed), asks for your API key, sets it to start with Windows, and adds a **小宁翻译** icon to the desktop and Start menu.
 
 2. When asked for an **API key**, paste your Claude API key (starts with `sk-ant-`). If your company uses a gateway, enter its URL next. You can press Enter to skip and add them later.
 3. The XiaoNing Translate icon (an orange speech bubble) appears in the system tray. When you see the "小宁翻译已就绪" (ready) message, you're good to go.
@@ -77,6 +77,7 @@ Copy `prompts/write.example.txt` and `prompts/read.example.txt` to `prompts/writ
 ## Troubleshooting
 
 - **Screenshot tools**: dragging a box in a screenshot tool (DingTalk, WeChat, Snipaste…) is ignored, so it no longer ends the capture.
+- **Windows: the tray icon is gone**: double-click **小宁翻译** on the desktop (or in the Start menu) to start it again. If something goes wrong in one action, the tool now shows a short notice and keeps running; details are written to `error.log` in the install folder.
 - **No toolbar after selecting text**: macOS — make sure Hammerspoon is enabled under Accessibility, then Reload Config. Windows — make sure the tray icon is there; right-click → reload. Also check the toolbar isn't switched off (`⌃⌥T` / `Ctrl+Alt+T`).
 - **"出错了" (error) or timeout**: check your API key and network; if you use a gateway, check the `endpoint` in your config.
 - **Screenshot only captures the desktop (macOS)**: enable Hammerspoon under Screen Recording.
