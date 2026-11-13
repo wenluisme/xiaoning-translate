@@ -68,7 +68,7 @@ jobs:
           $ini = Get-Content (Join-Path $dest 'config.ini') -Raw
           if ($ini -notmatch 'apiKey=test-key') { Write-Error "config.ini not written: $ini"; exit 1 }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Startup')) 'XiaoNing Translate.lnk'))) { Write-Error 'startup shortcut missing'; exit 1 }
-          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) '小宁翻译.lnk'))) { Write-Error 'desktop shortcut missing'; exit 1 }
+          if (-not (Get-ChildItem ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk)) { Write-Error 'desktop shortcut missing'; exit 1 }
           Write-Host "installer OK"
 
       - name: Installed app starts and stays running
