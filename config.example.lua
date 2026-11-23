@@ -14,4 +14,5 @@ return {
   model = "claude-sonnet-5-5",    -- for write/replace hotkeys
   -- readModel = "claude-haiku-4-5", -- optional: separate model for translate popups
   timeout = 45,
+  -- intercomToken = "...", -- optional (macOS): learn from your Intercom conversations, see README
 }

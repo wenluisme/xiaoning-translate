@@ -73,6 +73,10 @@ Requires Windows 10 (1803 or later) or Windows 11.
 
 Copy `prompts/write.example.txt` and `prompts/read.example.txt` to `prompts/write.txt` and `prompts/read.txt`, and add a short company description, fixed translations for your product terms, and the tone you want. These files stay on your computer and are never committed.
 
+**Learn from Intercom (macOS).** Add `intercomToken = "..."` (an Intercom access token that can read conversations) to `config.lua`. Then:
+- When you translate a message in Intercom (open in Safari or Chrome), the suggested reply reads that conversation first, so it continues from where your team left off.
+- Once a day `tools/intercom_sync.py` pulls your recent conversations, keeps your teammates' real replies (`data/intercom-pairs.json`) and writes a short knowledge base (`prompts/knowledge.txt`). The most similar past answers are shown to Claude as examples, with emails, IPs and order numbers masked. All of this stays on your computer.
+
 You can also give the suggested reply your team's real policies: copy `prompts/knowledge.example.txt` to `prompts/knowledge.txt` and write down how you answer common questions (refunds, replacements, technical limits…). Translate adds it to every request, so 【建议回复】 follows those rules instead of guessing.
 
 ## Troubleshooting

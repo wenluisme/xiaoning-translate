@@ -10,3 +10,6 @@ prompts/*.txt
 config.ini
 error.log
 给苏柯的消息.md
+
+# Intercom sync output (customer conversations)
+data/
