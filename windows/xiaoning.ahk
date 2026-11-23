@@ -532,8 +532,6 @@ ShowToolbar(sel) {
   buttons := [["read", "翻译"]]
   if sel.editable {
     buttons.Push(["en", "译成英文"])
-    if (lastLanguage != "English")
-      buttons.Push(["last", "译成" LangZh(lastLanguage)])
     buttons.Push(["more", "其他语言"], ["polish", "润色"])
   }
   buttons.Push(["copy", "复制"])

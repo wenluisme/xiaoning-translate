@@ -6,7 +6,7 @@ A select-to-translate tool for people who talk to customers in other languages, 
 
 Select any text with the mouse and a small toolbar pops up next to it:
 
-**Translate · To English · To ⟨last language⟩ · Other languages · Polish · Copy**
+**Translate · To English · Other languages · Polish · Copy**
 
 - **Read customer messages**: select a message and click **Translate** — a popup shows the Chinese translation, what the customer means, and a suggested reply (the copy button copies the suggested reply).
 - **Write replies**: draft your reply in your own language, select it, click **To English** or **Other languages** — it is translated and polished into a natural, friendly support tone and **written straight back into the input box**. Undo with ⌘Z / Ctrl+Z.
@@ -60,7 +60,6 @@ Requires Windows 10 (1803 or later) or Windows 11.
 |---|---|
 | **翻译** Translate | Shows the translation in a popup (foreign language → Chinese, Chinese → English); the original text is not changed |
 | **译成英文** To English | Translates and polishes into English and replaces the selection |
-| **译成⟨…⟩** To ⟨last language⟩ | Same, with the language you last picked under "Other languages" |
 | **其他语言** Other languages | Pick one of 20 languages (searchable), then replace |
 | **润色** Polish | Keeps the language, just makes it read naturally, then replaces |
 | **复制** Copy | Copies the selection |

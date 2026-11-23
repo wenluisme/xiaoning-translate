@@ -947,9 +947,6 @@ showToolbar = function(sel, pos)
   local buttons = { { id = "read", label = "翻译" } }
   if sel.editable ~= false then
     table.insert(buttons, { id = "en", label = "译成英文" })
-    if lastLanguage ~= "English" then
-      table.insert(buttons, { id = "last", label = "译成" .. (LANG_ZH[lastLanguage] or lastLanguage) })
-    end
     table.insert(buttons, { id = "more", label = "其他语言" })
     table.insert(buttons, { id = "polish", label = "润色" })
   end
