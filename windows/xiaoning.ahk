@@ -134,6 +134,15 @@ ReadPrompt(name) {
   return FileExist(p) ? FileRead(p, "UTF-8") : ""
 }
 
+; read prompt + the team's reply knowledge base (prompts\knowledge.txt), used for 【建议回复】
+ReadSystem() {
+  sys := ReadPrompt("read")
+  kb := ReadPrompt("knowledge")
+  if (Trim(kb, " `t`r`n") != "")
+    sys .= "`n`nOur support team's knowledge base follows. When you write the suggested reply (【建议回复】), follow these policies and facts wherever they apply to the customer's message; do not add policies that do not apply.`n<knowledge>`n" kb "`n</knowledge>"
+  return sys
+}
+
 JsonStr(s) {
   s := StrReplace(s, "\", "\\")
   s := StrReplace(s, '"', '\"')
@@ -601,7 +610,7 @@ Prefetch(id, sel) {
   if (id != "read" && StrLen(sel.text) > 8000)
     return
   switch id {
-    case "read": Request(k := ReadKey(sel.text), ReadPrompt("read"), JsonStr(WrapText(k, sel.text)))
+    case "read": Request(k := ReadKey(sel.text), ReadSystem(), JsonStr(WrapText(k, sel.text)))
     case "en": Request(k := WriteKey("English", sel.text), WriteSystem("English"), JsonStr(WrapText(k, sel.text)))
     case "last": Request(k := WriteKey(lastLanguage, sel.text), WriteSystem(lastLanguage), JsonStr(WrapText(k, sel.text)))
     case "polish": Request(k := WriteKey("", sel.text), WriteSystem(""), JsonStr(WrapText(k, sel.text)))
@@ -796,7 +805,7 @@ ReadText(text) {
   readSeq += 1
   mySeq := readSeq
   key := ReadKey(text)
-  r := Request(key, ReadPrompt("read"), JsonStr(WrapText(key, text)))
+  r := Request(key, ReadSystem(), JsonStr(WrapText(key, text)))
   ShowPopup(r.done ? "译文" : "翻译中…", r.text, r.done, !r.done)
   onDelta(t) {
     if (popGui && mySeq = readSeq)
@@ -963,7 +972,7 @@ ScreenshotTranslate() {
     . '{"type":"text","text":' JsonStr("Translate the customer text in this screenshot. Do not answer it yourself.`n`n" READ_FORMAT) '}]'
   ShowPopup("识别翻译中…", "（截图已发送给 Claude）", false, true)
   key := "shot:" A_TickCount
-  r := Request(key, ReadPrompt("read"), content)
+  r := Request(key, ReadSystem(), content)
   onDelta(t) {
     if popGui
       PopupStream(t)

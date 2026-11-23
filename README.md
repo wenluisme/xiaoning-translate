@@ -73,6 +73,8 @@ Requires Windows 10 (1803 or later) or Windows 11.
 
 Copy `prompts/write.example.txt` and `prompts/read.example.txt` to `prompts/write.txt` and `prompts/read.txt`, and add a short company description, fixed translations for your product terms, and the tone you want. These files stay on your computer and are never committed.
 
+You can also give the suggested reply your team's real policies: copy `prompts/knowledge.example.txt` to `prompts/knowledge.txt` and write down how you answer common questions (refunds, replacements, technical limits…). Translate adds it to every request, so 【建议回复】 follows those rules instead of guessing.
+
 ## Troubleshooting
 
 - **Screenshot tools**: dragging a box in a screenshot tool (DingTalk, WeChat, Snipaste…) is ignored, so it no longer ends the capture.

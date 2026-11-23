@@ -1,0 +1,13 @@
+Your support team's knowledge base. XiaoNing Translate adds this file to the Translate request, so the suggested reply follows your real policies.
+Copy this file to prompts/knowledge.txt (that copy stays on your computer and is never committed) and replace the examples below with your own.
+
+Example: changing a product
+- Customers can change X themselves in the dashboard within N hours of purchase.
+- After that, we offer one manual change per order: ask them to ...
+
+Example: refunds
+- Ask whether they want the refund to their account balance (instant) or to the original payment method (a few business days).
+
+Style
+- Polite, warm and professional. Match the customer's format: chat message → chat reply, email → email reply.
+- Do not invent prices, discounts or promises that are not written here.

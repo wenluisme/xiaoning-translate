@@ -34,6 +34,7 @@ local function promptPath(name)
 end
 local PROMPT_FILE = promptPath("write")
 local READ_PROMPT_FILE = promptPath("read")
+local KNOWLEDGE_FILE = promptPath("knowledge")
 
 local ENDPOINT = CFG.endpoint or "https://api.anthropic.com/v1/messages"
 local MODEL_WRITE = CFG.model or CFG.writeModel or "claude-sonnet-5-5"
@@ -115,6 +116,16 @@ local function readFile(path)
   local s = f:read("*a")
   f:close()
   return s
+end
+
+-- read prompt + the team's reply knowledge base (prompts/knowledge.txt), used for 【建议回复】
+local function readSystem()
+  local sys = readFile(READ_PROMPT_FILE) or ""
+  local kb = readFile(KNOWLEDGE_FILE)
+  if kb and kb:match("%S") then
+    sys = sys .. "\n\nOur support team's knowledge base follows. When you write the suggested reply (【建议回复】), follow these policies and facts wherever they apply to the customer's message; do not add policies that do not apply.\n<knowledge>\n" .. kb .. "\n</knowledge>"
+  end
+  return sys
 end
 
 -- API key: config.lua `apiKey`, or (if `useClaudeCodeSettings = true`) the token Claude Code uses.
@@ -699,7 +710,7 @@ local function readText(text)
   readSeq = readSeq + 1
   local mySeq = readSeq
   local key = readKey(text)
-  local r = request(key, readFile(READ_PROMPT_FILE), text, MODEL_READ)
+  local r = request(key, readSystem(), text, MODEL_READ)
   showPopup(r.done and "译文" or "翻译中…", r.text, r.done, not r.done, nil)
   listen(r,
     function(t)
@@ -920,7 +931,7 @@ end
 local function prefetch(id, sel)
   log("prefetch " .. tostring(id))
   if #sel.text > 8000 and id ~= "read" then return end
-  if id == "read" then request(readKey(sel.text), readFile(READ_PROMPT_FILE), sel.text, MODEL_READ)
+  if id == "read" then request(readKey(sel.text), readSystem(), sel.text, MODEL_READ)
   elseif id == "en" then request(writeKey("English", sel.text), writeSystem("English"), sel.text)
   elseif id == "last" then request(writeKey(lastLanguage, sel.text), writeSystem(lastLanguage), sel.text)
   elseif id == "polish" then request(writeKey(nil, sel.text), writeSystem(nil), sel.text) end
@@ -1112,7 +1123,7 @@ local function readScreenshot()
       { type = "image", source = { type = "base64", media_type = "image/png", data = hs.base64.encode(data) } },
       { type = "text", text = "Translate the customer text in this screenshot. Do not answer it yourself.\n\n" .. READ_FORMAT },
     }
-    callClaude(readFile(READ_PROMPT_FILE), content, function(result, err)
+    callClaude(readSystem(), content, function(result, err)
       if not popup then return end
       if result then showPopup("截图译文", result, true, false, nil)
       else js("setStatus","出错了",false); js("setErr", err or "出错了") end
@@ -1251,7 +1262,7 @@ M.paths = function() return { dir = DIR, write = PROMPT_FILE, read = READ_PROMPT
 
 M.toolbarButtons = function() return toolbar and toolbarButtons or {} end
 
-M._test = { readText = function(t) return readText(t) end, setPinned = function(v) return setPinned(v) end, pinned = function() return popupPinned end, request = function(...) return request(...) end, readKey = function(...) return readKey(...) end, writeKey = function(...) return writeKey(...) end, writeSystem = function(...) return writeSystem(...) end, readPrompt = function() return readFile(READ_PROMPT_FILE) end, editableAt = function(p) return editableAt(p) end, listen = function(...) return listen(...) end }
+M._test = { readText = function(t) return readText(t) end, setPinned = function(v) return setPinned(v) end, pinned = function() return popupPinned end, request = function(...) return request(...) end, readKey = function(...) return readKey(...) end, writeKey = function(...) return writeKey(...) end, writeSystem = function(...) return writeSystem(...) end, readPrompt = function() return readSystem() end, editableAt = function(p) return editableAt(p) end, listen = function(...) return listen(...) end }
 
 M.debugState = function()
   return { icon = toolbar ~= nil, iconFrame = toolbar and toolbar:frame(), iconText = toolbarSel and toolbarSel.text, editable = toolbarSel and toolbarSel.editable, popup = popup ~= nil, popupFrame = popup and popup:frame(), popupVisible = popup and popup:isVisible(), tap = mouseTap and mouseTap:isEnabled(), auto = toolbarEnabled }
