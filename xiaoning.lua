@@ -148,9 +148,19 @@ local copyMethod = nil
 -- Apps that ignore a synthetic ⌘C but copy fine from the menu (learned at runtime, remembered).
 local menuCopyApps = hs.settings.get("claudeReplace.menuCopyApps") or { ["ru.keepcoder.Telegram"] = true }
 
+-- Copy lives under the Edit menu, but apps localize both names differently:
+-- macOS system apps use 拷贝, Telegram uses 复制; menus may be zh or en.
+local EDIT_MENUS = { "编辑", "Edit" }
+local COPY_ITEMS = { "拷贝", "复制", "Copy" }
 local function menuCopy(app, pb)
   local marker = pb.changeCount()
-  local ok = app:selectMenuItem({ "编辑", "拷贝" }) or app:selectMenuItem({ "Edit", "Copy" })
+  local ok = false
+  for _, em in ipairs(EDIT_MENUS) do
+    for _, ci in ipairs(COPY_ITEMS) do
+      if app:selectMenuItem({ em, ci }) then ok = true break end
+    end
+    if ok then break end
+  end
   if ok and waitForClipboardChange(marker, 0.45) then return pb.getContents() end
   return nil
 end
